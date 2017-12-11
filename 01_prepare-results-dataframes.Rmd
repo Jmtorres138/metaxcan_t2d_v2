@@ -1,0 +1,280 @@
+---
+title: "Untitled"
+author: "Jason Torres"
+date: "December 10, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Setup 
+
+Copied results directory from /group/im-lab/nas40t2/projects/t2d/runs/metaxcan/results/v6p/ 
+to /Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/ prior to running script 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+serv.dir <- "/Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/"
+mxnres.dir <- serv.dir %&% "t2d/runs/metaxcan/results/v6p/"
+mult.dir <- serv.dir %&% "t2d/runs/multitissue/results/multi_tissue_ccn_30/"
+coloc.dir <- serv.dir %&% "t2d/runs/coloc/results/coloc_all/"
+write.dir <- "/Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/data_frames/"
+
+```
+
+
+# Build MetaXcan results input data frames 
+
+
+```{r}
+
+mxnres.files <- list.files(mxnres.dir)
+gwas.names <- map(mxnres.files,function(s){strsplit(x=s,split="_TW")[[1]][1]}) %>% 
+  as.character(.) %>% unique(.) 
+gwas.names <- gwas.names[!grepl("_DGN",gwas.names)]
+
+tiss.names <- map(mxnres.files,function(s){strsplit(x=s,split="_TW_")[[1]][2]}) %>% 
+  as.character(.) %>% unique(.) %>% map(.,function(s){strsplit(s,".csv")[[1]][1]}) %>% 
+  as.character(.) 
+
+```
+
+Manually inspected tiss.names and will keep skeletal muscle, liver, adipose, pancreas tissues 
+
+```{r}
+
+tiss.names <- c("Pancreas","Adipose_Subcutaneous","Muscle_Skeletal","Liver")
+
+```
+
+
+Build results files per gwas for tissues in tissue vector  
+
+```{r}
+
+aggregate_tissues <- function(gwas_name, tissue_vector){
+  pb <- txtProgressBar(min=0,max=length(tissue_vector),style=3)
+  out.df <- c() 
+  for (i in 1:length(tissue_vector)){
+    tiss <- tissue_vector[i]
+    setTxtProgressBar(pb,i)
+    fname <- mxnres.dir %&% gwas_name %&% "_TW_" %&% tiss %&% ".csv"
+    df <- fread(fname)
+    df$tissue <- rep(tiss,dim(df)[1])
+    out.df <- rbind(out.df,df)
+  }
+  return(out.df)
+}
+
+aggregate_gwas <- function(gwas_vector,tissue_vector){
+  out.df <- c() 
+  for (i in 1:length(gwas_vector)){
+    gwas_name <- gwas_vector[i]
+    print(gwas_name)
+    df <- aggregate_tissues(gwas_name,tissue_vector)
+    df$gwas <- rep(gwas_name,dim(df)[1])
+    out.df <- rbind(out.df,df)
+  }
+  return(out.df)  
+}
+
+```
+
+
+Build COLOC results files per gwas for tissues in tissue vector  
+
+```{r}
+
+aggregate_tissues_coloc <- function(gwas_name, tissue_vector){
+  pb <- txtProgressBar(min=0,max=length(tissue_vector),style=3)
+  out.df <- c() 
+  for (i in 1:length(tissue_vector)){
+    tiss <- tissue_vector[i]
+    setTxtProgressBar(pb,i)
+    fname <- coloc.dir %&% gwas_name %&% "_eQTL_" %&% tiss %&% ".txt"
+    df <- fread(fname)
+    df$tissue <- rep(tiss,dim(df)[1])
+    out.df <- rbind(out.df,df)
+  }
+  return(out.df)
+}
+
+aggregate_gwas_coloc <- function(gwas_vector,tissue_vector){
+  out.df <- c() 
+  for (i in 1:length(gwas_vector)){
+    gwas_name <- gwas_vector[i]
+    print(gwas_name)
+    df <- aggregate_tissues_coloc(gwas_name,tissue_vector)
+    df$gwas <- rep(gwas_name,dim(df)[1])
+    out.df <- rbind(out.df,df)
+  }
+  return(out.df)  
+}
+
+```
+
+
+Create multi-tissue meta regression results data frame 
+
+```{r}
+
+buil_mult_df <- function(gwas_vector){
+  flist <- list.files(mult.dir)
+  pb <- txtProgressBar(min=0,max=length(gwas_vector),style=3)
+  out.df <- c()
+  for (i in 1:length(gwas_vector)){
+    setTxtProgressBar(pb,i)
+    gwas_name <- gwas_vector[i]
+    fname <- mult.dir %&% gwas_name %&% "_ccn_30.txt"
+    df <- fread(fname)
+    df$gwas <- rep(gwas_name,dim(df)[1])
+    out.df <- rbind(out.df,df)
+  }
+  return(out.df)
+}
+
+```
+
+
+
+Gene reference 
+
+```{r}
+
+library("GenomicRanges")
+library("GenomicFeatures")
+library("org.Hs.eg.db")
+library("annotate")
+library("Homo.sapiens")
+
+str(Homo.sapiens)
+
+```
+
+
+
+
+# Create base data frames 
+
+
+```{r}
+
+mult.df <- buil_mult_df(gwas.names)
+coloc.df <- aggregate_gwas_coloc(gwas.names,tiss.names)
+
+
+build_full_res_df <- function(gwas.names,tiss.names){
+  res.df <- aggregate_gwas(gwas.names,tiss.names)
+  pb <- txtProgressBar(min=0,max=dim(res.df)[1],style=3)
+  P_H3 <- map(1:dim(res.df)[1],function(i){
+    setTxtProgressBar(pb,i)
+    filter(coloc.df,gene_id==res.df$gene[i],tissue==res.df$tissue[i],
+                  gwas==res.df$gwas[i])$P_H3 
+  }) %>% as.numeric(.) 
+  pb <- txtProgressBar(min=0,max=dim(res.df)[1],style=3)
+  P_H4 <- map(1:dim(res.df)[1],function(i){
+    setTxtProgressBar(pb,i)
+    filter(coloc.df,gene_id==res.df$gene[i],tissue==res.df$tissue[i],
+                  gwas==res.df$gwas[i])$P_H4 
+  }) %>% as.numeric(.) 
+  res.df$P_H3 <- P_H3
+  res.df$P_H4 <- P_H4
+  
+  
+  ensids <- unique(c(res.df$gene,mult.df$gene))
+  ens.vec <- map(ensids,function(e){strsplit(e,".",fixed=TRUE)[[1]][1]}) %>% 
+    as.character(.)
+  
+  ens.df <- select(Homo.sapiens,key=ens.vec,keytype="ENSEMBL",
+                                  columns=c("TXCHROM","TXSTRAND","TXSTART","TXEND"))
+  
+  res.df$ENSEMBL <- map(res.df$gene,function(s){strsplit(s,".",fixed=TRUE)[[1]][1]}) %>% 
+    as.character(.)
+  str(ens.df)
+  
+  chrom.vec <- c("chr" %&% 1:22)
+  pb <- txtProgressBar(min=0,max=length(res.df$ENSEMBL),style=3)
+  chrom <- map(1:length(res.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- res.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      unique(sub$TXCHROM) %>% gsub("chr","",.)
+  }) %>% as.character(.) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(res.df$ENSEMBL),style=3)
+  gene.start <- map(1:length(res.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- res.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      min(sub$TXSTART)
+  }) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(res.df$ENSEMBL),style=3)
+  gene.end <- map(1:length(res.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- res.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      max(sub$TXEND)
+  }) %>% as.integer(.)
+  
+  res.df$chrom <- chrom; res.df$gene.start <- gene.start; res.df$gene.end <- gene.end
+  
+  return(res.df)
+}
+
+append_mult_df <- function(mult.df){
+  mult.df$ENSEMBL <- map(mult.df$gene,function(s){strsplit(s,".",fixed=TRUE)[[1]][1]}) %>% 
+    as.character(.)
+  chrom.vec <- c("chr" %&% 1:22)
+  pb <- txtProgressBar(min=0,max=length(mult.df$ENSEMBL),style=3)
+  chrom <- map(1:length(mult.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- mult.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      unique(sub$TXCHROM) %>% gsub("chr","",.)
+  }) %>% as.character(.) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(mult.df$ENSEMBL),style=3)
+  gene.start <- map(1:length(mult.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- mult.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      min(sub$TXSTART)
+  }) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(mult.df$ENSEMBL),style=3)
+  gene.end <- map(1:length(mult.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- mult.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      max(sub$TXEND)
+  }) %>% as.integer(.)
+  
+  mult.df$chrom <- chrom; mult.df$gene.start <- gene.start; mult.df$gene.end <- gene.end
+  return(mult.df)
+}
+
+
+
+res.df <- build_full_res_df(gwas.names,tiss.names)
+mult.df <- append_mult_df(mult.df)
+
+```
+
+
+# Write data frames 
+
+
+```{r}
+
+write.table(res.df,write.dir%&%"gtex_single_results.txt",quote=FALSE,sep="\t",row.names=F)
+write.table(mult.df,write.dir%&%"gtex_mulit_results.txt",quote=FALSE,sep="\t",row.names=F)
+
+```
+
+
