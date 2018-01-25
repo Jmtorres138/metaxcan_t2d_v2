@@ -41,21 +41,22 @@ reads in >=10 samples.
 
 Covariates - Before training models to predict gene expression, expression
 values were adjusted for the following covariates:
-    PEER Factors - PEER Factors were calculated using the GTEx pipeline docker
-    container.  The number of PEER factors was chosen according to GTEx v7
-    protocol with the number of samples being the determining factor. If the
-    number of samples was greater than or equal to 350, we used 60 PEER factors.
-    If the number of samples was between 250 and 350, we used 45. Between 150
-    and 250, we used 30, and less than 150 we used 15.
+   
+PEER Factors - PEER Factors were calculated using the GTEx pipeline docker
+container.  The number of PEER factors was chosen according to GTEx v7
+protocol with the number of samples being the determining factor. If the
+number of samples was greater than or equal to 350, we used 60 PEER factors.
+If the number of samples was between 250 and 350, we used 45. Between 150
+and 250, we used 30, and less than 150 we used 15.
     
-    Sex - As specified by GTEx Subject Phenotypes file
+Sex - As specified by GTEx Subject Phenotypes file
     
-    Genetic Principal Components - We used the top 3 genetic principal
-    compoonents as computed by GTEx.
+Genetic Principal Components - We used the top 3 genetic principal
+compoonents as computed by GTEx.
     
-    Sequencing Platform - Whole Genome Sequencing for samples was carried out on
-    two different types of machines. This information can be found in the Sample
-    Attributes file.
+Sequencing Platform - Whole Genome Sequencing for samples was carried out on
+two different types of machines. This information can be found in the Sample
+Attributes file.
     
 Expression was adjusted by performing a multivariate linear regression with all
 covariates, pulling the residual values, and then assigning the residuals to be
