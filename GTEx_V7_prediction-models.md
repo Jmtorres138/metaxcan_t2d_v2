@@ -11,6 +11,7 @@ Server, with HRC (Version r1.1 2016) as a reference panel. For each model, there
 is also a corresponding file with covariance data for the SNPs in each model.
 These files are necessary to use S-PrediXcan.
 ## Methods
+
 Genotype data - GTEx genotype data was downloaded from dbGaP in the form of a
 vcf file with all original 635 samples. GTEx standard QC procedures had already
 been applied at time of download.  We then filtered the samples to include
@@ -27,6 +28,7 @@ frequency >= 1% according to the samples that had RNA sequencing performed for
 that tissue. For analysis, genotypes were encoded on a continuous range from 0
 to 2, with the value denoting the estimated count of the second, or effect,
 allele.
+
 Expression data - Expression data for each tissue was quantified by the GTEx
 consortium, and we made extensive use of their pipeline for eQTL analysis, which
 can be found at https://github.com/broadinstitute/gtex-pipeline. We normalized
@@ -36,6 +38,7 @@ observed across samples, and then for each gene, expression values are inverse
 quantile normalized to a standard normal distribution across samples. Genes were
 selected based on expression thresholds of >0.1 RPKM in >=10 samples and >5
 reads in >=10 samples.
+
 Covariates - Before training models to predict gene expression, expression
 values were adjusted for the following covariates:
     PEER Factors - PEER Factors were calculated using the GTEx pipeline docker
@@ -53,9 +56,13 @@ values were adjusted for the following covariates:
 Expression was adjusted by performing a multivariate linear regression with all
 covariates, pulling the residual values, and then assigning the residuals to be
 the new expression values.
+
+
 Annotations - Gene annotation was derived from gencode v19, using GTEx's
 collapsed gene model. SNP annotation was derived from the vcf from GTEx, a
 HapMap annotation file for the CEU population, and data from dbSNP version 150.
+
+
 Nested Cross Validated Elastic-Net - In previous versions of PredictDB, we
 employed 10-fold cross-validated elastic-net to tune the parameter lambda, and
 then estimated the significance of the model. It recently became apparent that
@@ -80,6 +87,7 @@ A model was determined to be "significant" if the average pearson correlation
 between predicted and observed during nested cross validation was greater than
 0.1 (equivalent to R2 > 0.01) and the estimated p-value for this statistic was
 less than 0.05. See below for how the p-value was calculated.
+
 ## Schema
 ### Weights Table
 gene - Ensembl ID of the gene
@@ -92,6 +100,7 @@ weight - The weight for this SNP in predicting expression for the gene. In
 predicting the expression for the gene, the weight is multiplied by the count,
 or estimated count, of the effect allele in the individual. This value is added
 to all other weighted SNPs in the model.
+
 ### Extra Table
 This table contains summary statistics about each gene model for the tissue
 gene - Ensembl ID of the gene
