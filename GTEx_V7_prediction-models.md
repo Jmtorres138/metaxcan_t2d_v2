@@ -47,12 +47,16 @@ values were adjusted for the following covariates:
     number of samples was greater than or equal to 350, we used 60 PEER factors.
     If the number of samples was between 250 and 350, we used 45. Between 150
     and 250, we used 30, and less than 150 we used 15.
+    
     Sex - As specified by GTEx Subject Phenotypes file
+    
     Genetic Principal Components - We used the top 3 genetic principal
     compoonents as computed by GTEx.
+    
     Sequencing Platform - Whole Genome Sequencing for samples was carried out on
     two different types of machines. This information can be found in the Sample
     Attributes file.
+    
 Expression was adjusted by performing a multivariate linear regression with all
 covariates, pulling the residual values, and then assigning the residuals to be
 the new expression values.
