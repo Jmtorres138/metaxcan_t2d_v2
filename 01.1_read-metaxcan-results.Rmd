@@ -24,10 +24,13 @@ library("tidyverse")
 
 local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
 serv.dir <- "/Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/"
+
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+
 mxnres.dir <- serv.dir %&% "t2d/runs/metaxcan/results/v6p/"
 mult.dir <- serv.dir %&% "t2d/runs/multitissue/results/multi_tissue_ccn_30/"
 coloc.dir <- serv.dir %&% "t2d/runs/coloc/results/coloc_all/"
-write.dir <- "/Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/data_frames/"
+write.dir <- rescomp.dir %&% "data_frames/"
 
 ```
 
@@ -230,6 +233,13 @@ build_full_res_df <- function(gwas.names,tiss.names){
 }
 
 append_mult_df <- function(mult.df){
+  res.df <- aggregate_gwas(gwas.names,tiss.names)
+  ensids <- unique(c(res.df$gene,mult.df$gene))
+  ens.vec <- map(ensids,function(e){strsplit(e,".",fixed=TRUE)[[1]][1]}) %>% 
+    as.character(.)
+  
+  ens.df <- select(Homo.sapiens,key=ens.vec,keytype="ENSEMBL",
+                                  columns=c("TXCHROM","TXSTRAND","TXSTART","TXEND"))  
   mult.df$ENSEMBL <- map(mult.df$gene,function(s){strsplit(s,".",fixed=TRUE)[[1]][1]}) %>% 
     as.character(.)
   chrom.vec <- c("chr" %&% 1:22)
@@ -273,8 +283,10 @@ mult.df <- append_mult_df(mult.df)
 ```{r}
 
 write.table(res.df,write.dir%&%"gtex_single_results.txt",quote=FALSE,sep="\t",row.names=F)
-write.table(mult.df,write.dir%&%"gtex_mulit_results.txt",quote=FALSE,sep="\t",row.names=F)
+write.table(mult.df,write.dir%&%"gtex_multi_results.txt",quote=FALSE,sep="\t",row.names=F)
 
 ```
+
+
 
 

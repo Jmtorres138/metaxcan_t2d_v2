@@ -1,0 +1,55 @@
+---
+title: "03.1_genome-wide-significant.Rmd"
+author: "Jason Torres"
+date: "January 27, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+
+```
+
+
+# Get Genome-wide-signficant dataframes 
+
+## Multi-tissue 
+
+```{r}
+
+mult.df <- fread(df.dir %&% "gtex_multi_results.txt")
+
+```
+
+```{r}
+
+get_mult_sig <- function(gwas=""){}
+
+```
+
+## Single-tissue 
+
+```{r}
+
+sing.df <- fread(df.dir %&% "gtex_multi_results.txt")
+
+
+```
+
+$Neff = 4/(1/Ncases+1/Nctrls)$
+
+
+
