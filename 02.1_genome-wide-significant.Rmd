@@ -1,0 +1,103 @@
+---
+title: "genome-wide"
+author: "Jason Torres"
+date: "January 29, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+assoc.df <- fread(df.dir %&% "association_results.txt")
+
+gwas.names <- c("scott","scottadj","fi","fg")
+tiss.names <- c("panc","liv","mus","adi","multi")
+tiss.df <- data.frame(abrev=tiss.names,
+                      full.name=c("Pancreas","Liver",
+                                  "Muscle-skeletal","Adipose-subcutaneous",
+                                  "cross-tissue"))
+
+```
+
+
+Bonferroni Significant data frames 
+
+```{r}
+
+get_gws_results <- function(gwas.name,tiss.abrev,pred.perf.q=0.05){
+  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
+                          matches(tiss.abrev%&%"."%&%gwas.name%&%"\\.")) %>% as.data.frame(.)
+
+  if (tiss.abrev!="multi"){
+    # Filter out NA's and genes with ppq > 0.05
+    index <- which(names(sub.df)==tiss.abrev%&%"."%&%gwas.name%&%".qpp") 
+    keep.vec <- sub.df[,index] <= pred.perf.q
+    keep.vec[is.na(keep.vec)] <- FALSE
+    sub.df <- sub.df[keep.vec,]    
+  }
+  bonfer <- 0.05 / dim(sub.df)[1]
+  # keep bonferonni associations 
+  index <- which(names(sub.df)==tiss.abrev%&%"."%&%gwas.name%&%".p") 
+  keep.vec <- sub.df[,index] <= bonfer
+  keep.vec[is.na(keep.vec)] <- FALSE
+  sub.df <- sub.df[keep.vec,]
+  if (tiss.abrev!="multi"){
+    len <- dim(sub.df)[2]
+    names(sub.df)[(len-4):len] <- c("z","p","pred.perf.q","p_H3","p_H4")
+  } else{
+    sub.df$pred.perf.q <- NA; sub.df$p_H3 <- NA; sub.df$p_H4<-NA
+    len <- dim(sub.df)[2]
+    names(sub.df)[(len-4):(len-3)] <- c("z","p")
+  }
+  if (dim(sub.df)[1]>0){
+    sub.df$tissue <- filter(tiss.df,abrev==tiss.abrev)$full.name[1]
+    sub.df$tissue <- as.character(sub.df$tissue)    
+  }
+  return(sub.df)
+}
+
+build_gws_df <- function(gwas.name){
+  out.df <- c()
+  for (t in tiss.names){
+    build.df <- get_gws_results(gwas.name,t)
+    if (dim(build.df)[1]>0){
+      out.df <- rbind(out.df,build.df)
+    }
+  }
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+
+scott.sig.df <- build_gws_df("scott")
+scottbmiadj.sig.df <- build_gws_df("scottadj")
+fg.sig.df <- build_gws_df("fg")
+fi.sig.df <- build_gws_df("fi")
+
+write.table(scott.sig.df,file=df.dir%&%"Scott_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fg.sig.df,file=df.dir%&%"Magic_FG_gws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
+
+
+
+```
+
+
