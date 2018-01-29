@@ -1,5 +1,5 @@
 ---
-title: "03.1_genome-wide-significant.Rmd"
+title: "preare-results-dataframes.Rmd"
 author: "Jason Torres"
 date: "January 27, 2018"
 output: html_document
@@ -12,6 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 # Setup 
 
 ```{r}
+
 "%&%" <- function(a,b) paste0(a,b)
 
 library("data.table")
@@ -20,36 +21,173 @@ library("tidyverse")
 local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
 rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
-
-```
-
-
-# Get Genome-wide-signficant dataframes 
-
-## Multi-tissue 
-
-```{r}
-
 mult.df <- fread(df.dir %&% "gtex_multi_results.txt")
+sing.df <- fread(df.dir %&% "gtex_single_results.txt")
 
 ```
 
-```{r}
 
-get_mult_sig <- function(gwas=""){}
-
-```
-
-## Single-tissue 
-
-```{r}
-
-sing.df <- fread(df.dir %&% "gtex_multi_results.txt")
-
-
-```
+# Meta-analysis function
 
 $Neff = 4/(1/Ncases+1/Nctrls)$
+
+```{r}
+
+get_Neff <- function(ncases,ncontrols){
+  return(4/(1/ncases + 1/ncontrols))
+}
+
+```
+
+**GERA**; 9747 T2D cases, 61857 controls
+**Scott**; 26676 T2D case and 132532 control subjects
+
+```{r}
+
+gera.neff <- get_Neff(9747,61857)
+scott.neff <- get_Neff(26676,132532)
+
+```
+
+
+$F(x) = P(X <= x)$ 
+
+```{r}
+
+# pnorm is the R function that calculates the c. d. f.
+
+meta_analyze_obs <- function(p.vec,z.vec,neff.vec){
+  if (length(p.vec)!=length(z.vec) | length(p.vec) != length(neff.vec)){
+    stop("vectors do not agree in length")
+  }
+  # p.vec is vector of pvalues for a single observation across studies (i.e. SNP or gene)
+  # z.vec is vector of zscores for a single observation across studies (i.e. SNP or gene)
+  # neff.vec is vector of effective sample sizes across studies 
+  len <- length(p.vec)
+  numer.vec <- c(); denom.vec <- c()
+  for (i in 1:len){
+    z_i <- qnorm(p.vec[i]/2) * -1*sign(z.vec[i])
+    w_i <- sqrt(neff.vec[i])
+    numer.vec <- append(numer.vec, (z_i * w_i))
+    denom.vec <- append(denom.vec, (w_i)^2)
+  }
+  Z = sum(numer.vec) / sqrt(sum(denom.vec))
+  P = 2*pnorm(-abs(Z))
+  return(list(Z,P))
+}
+
+```
+
+
+# Build association results data frame 
+
+
+```{r}
+
+gwas.vec <- c("DIAGRAM_T2D_SCOTT","DIAGRAM_T2D_SCOTT_BMI_ADJ","GERA_DIA2","MAGIC_FastingGlucose","MAGIC_ln_FastingInsulin")
+gwas.abrev <- c("scott","scottadj","gera","fg","fi")
+tiss.vec <- c("Pancreas","Liver","Muscle_Skeletal","Adipose_Subcutaneous")
+tiss.abrev <- c("panc","liv","mus","adi")
+  
+get_multi_df <- function(sub.df){
+  # sub.df is filtered dataframe for this id
+  out.df <- c() 
+  for (i in 1:length(gwas.vec)){
+    gws <- gwas.vec[i]
+    id <- gwas.abrev[i]
+    z <- filter(sub.df,gwas==gws)$z_mean; z<-ifelse(length(z)==0,NA,z)
+    p <- filter(sub.df,gwas==gws)$pvalue; p<-ifelse(length(p)==0,NA,p)
+    df <- data.frame(z,p,stringsAsFactors = FALSE)
+    names(df) <- c("multi."%&%id%&%".zmean","multi."%&%id%&%".p")
+    if (is.null(dim(out.df))==TRUE){
+      out.df <- df
+    } else{
+      out.df <- cbind(out.df,df)
+    }
+  }
+  meta <- meta_analyze_obs(p.vec=c(dplyr::select(out.df,matches(".scott.p"))%>%as.numeric(.),
+                                   dplyr::select(out.df,matches(".gera.p"))%>%as.numeric(.)),
+                           z.vec=c(dplyr::select(out.df,matches(".scott.zmean"))%>%as.numeric(.),
+                                   dplyr::select(out.df,matches(".gera.zmean"))%>%as.numeric(.)),
+                           neff.vec=c(scott.neff,gera.neff))
+  out.df <- cbind(out.df,meta[[1]],meta[[2]])
+  l <- length(names(out.df))
+  names(out.df)[(l-1):l] <- c("multi.meta.z","multi.meta.p")
+  return(out.df)
+}
+
+get_single_df <- function(sub.df){
+  # sub.df is filtered dataframe for this id
+  out.df <- c() 
+  for(t in 1:length(tiss.vec)){
+    tiss <- tiss.vec[t]
+    tid <- tiss.abrev[t]
+    for (i in 1:length(gwas.vec)){
+      gws <- gwas.vec[i]
+      id <- gwas.abrev[i]
+      z <- filter(sub.df,gwas==gws,tissue==tiss)$zscore; z<-ifelse(length(z)==0,NA,z)
+      p <- filter(sub.df,gwas==gws,tissue==tiss)$pvalue; p<-ifelse(length(p)==0,NA,p)
+      qpp <- filter(sub.df,gwas==gws,tissue==tiss)$pred_perf_qval; qpp<-ifelse(length(qpp)==0,NA,qpp)
+      h3 <- filter(sub.df,gwas==gws,tissue==tiss)$P_H3; h3<-ifelse(length(h3)==0,NA,h3)
+      h4 <- filter(sub.df,gwas==gws,tissue==tiss)$P_H4; h4<-ifelse(length(h4)==0,NA,h4)
+      df <- data.frame(z,p,qpp,h3,h4,stringsAsFactors = FALSE)
+      names(df) <- c(tid%&%"."%&%id%&%".z",tid%&%"."%&%id%&%".p",
+                     tid%&%"."%&%id%&%".qpp",tid%&%"."%&%id%&%".h3",
+                     tid%&%"."%&%id%&%".h4")
+      if (is.null(dim(out.df))==TRUE){
+        out.df <- df
+      } else{
+        out.df <- cbind(out.df,df)
+      }
+    }
+    meta <- meta_analyze_obs(p.vec=c(dplyr::select(out.df,matches(tid%&%".scott.p"))%>%as.numeric(.),
+                                     dplyr::select(out.df,matches(tid%&%".gera.p"))%>%as.numeric(.)),
+                             z.vec=c(dplyr::select(out.df,
+                                                   matches(tid%&%".scott.z"))%>%as.numeric(.),
+                                     dplyr::select(out.df,
+                                                   matches(tid%&%".gera.z"))%>%as.numeric(.)),
+                             neff.vec=c(scott.neff,gera.neff))
+    out.df <- cbind(out.df,meta[[1]],meta[[2]])
+    l <- length(names(out.df))
+    names(out.df)[(l-1):l] <- c(tid%&%".meta.z",tid%&%".meta.p")    
+  }
+
+  return(out.df)
+}
+
+build_assoc_df <- function(){
+  gene.vec <- unique(c(mult.df$gene,sing.df$gene))
+  #gene.vec <- gene.vec[1:100]
+  pb <- txtProgressBar(min=0,max=length(gene.vec),style=3)
+  out.df<-c()
+  for (i in 1:length(gene.vec)){
+    #print(i)
+    setTxtProgressBar(pb,i)
+    v1 <- gene.vec[i] # gene 
+    sub1 <- filter(mult.df,gene==v1); sub2 <- filter(sing.df,gene==v1)
+    v2 <- c(sub1$gene_name,sub2$gene_name) %>% unique(.) # gene_name 
+    v3 <- c(sub1$chrom,sub2$chrom) %>% unique(.) # chrom 
+    v4 <- c(sub1$gene.start,sub2$gene.start) %>% unique(.) # gene.start 
+    v5 <- c(sub1$gene.end,sub2$gene.end) %>% unique(.) # gene.end 
+    build.df <- data.frame("gene"=v1,"gene_name"=v2,"chrom"=v3,"gene.start"=v4,"gene.end"=v5,stringsAsFactors=FALSE)
+    m.df <- get_multi_df(sub1)
+    s.df <- get_single_df(sub2)
+    build.df <- cbind(build.df,m.df,s.df)
+    out.df <- rbind(out.df,build.df)
+  }
+  return(out.df)
+}
+
+
+```
+
+
+```{r}
+
+assoc.df <- build_assoc_df()
+write.table(assoc.df,df.dir%&%"association_results.txt",sep="\t",quote=FALSE,row.names=F)
+
+```
 
 
 
