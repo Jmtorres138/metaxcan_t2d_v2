@@ -23,6 +23,8 @@ rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 assoc.df <- fread(df.dir %&% "association_results.txt")
 
+loci.df <- fread(df.dir %&% "gwas_windows.txt")
+
 gwas.names <- c("scott","scottadj","fi","fg")
 tiss.names <- c("panc","liv","mus","adi","multi")
 tiss.df <- data.frame(abrev=tiss.names,
@@ -96,7 +98,148 @@ write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.t
 write.table(fg.sig.df,file=df.dir%&%"Magic_FG_gws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
 
+```
 
+Append GERA and meta-analysis results for the T2D results  
+
+```{r}
+
+append_rep_info <- function(t2d.df,gwas.name){
+  # gwas.name is either scott or scottadj
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(t2d.df)[1],style=3)
+  for (i in 1:dim(t2d.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- t2d.df[i,]
+    g <- row.df$gene
+    tiss <- row.df$tissue
+    tiss.abrev <- ifelse(tiss=="Pancreas","panc",
+                   ifelse(tiss=="Liver","liv",
+                          ifelse(tiss=="Muscle-skeletal","mus",
+                                 ifelse(tiss=="Adipose-subcutaneous","adi",
+                                        ifelse(tiss=="cross-tissue","multi",NA)))))
+    sub.df <- filter(assoc.df,gene==g)
+    if (tiss.abrev=="multi"){
+      gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".zmean")]
+    } else{
+      gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".z")]
+    }
+    meta.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"meta"%&%".z")]
+    gera.p <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".p")]
+    meta.p <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"meta"%&%".p")]    
+    row.df$gera.z <- gera.z; row.df$gera.p <- gera.p; row.df$meta.z <- meta.z; row.df$meta.p <- meta.p
+    replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05)
+    row.df$replicated <- replicated
+    out.df <- rbind(out.df,row.df)
+  }
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+scott.sig.full.df <- append_rep_info(scott.sig.df,"scott")
+scottbmiadj.sig.full.df <- append_rep_info(scottbmiadj.sig.df,"scott")
+
+write.table(scott.sig.full.df,file=df.dir%&%"Scott_T2D_gws-significant.full.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.full.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+# Locus-wide significant results 
+
+
+```{r}
+
+
+get_lws_results <- function(gwas.name,tiss.abrev,loc.id,pred.perf.q=0.05){
+  loc.sub <- filter(loci.df,locus.id==loc.id)
+  
+  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
+                          matches(tiss.abrev%&%"."%&%gwas.name%&%"\\.")) %>% as.data.frame(.) %>% 
+    filter(., chrom==loc.sub$chrom, gene.start >= loc.sub$loc.start, gene.end <= loc.sub$loc.end)
+
+  if (tiss.abrev!="multi"){
+    # Filter out NA's and genes with ppq > 0.05
+    index <- which(names(sub.df)==tiss.abrev%&%"."%&%gwas.name%&%".qpp") 
+    keep.vec <- sub.df[,index] <= pred.perf.q
+    keep.vec[is.na(keep.vec)] <- FALSE
+    sub.df <- sub.df[keep.vec,]    
+  }
+  bonfer <- 0.05 / dim(sub.df)[1]
+  # keep bonferonni associations 
+  index <- which(names(sub.df)==tiss.abrev%&%"."%&%gwas.name%&%".p") 
+  keep.vec <- sub.df[,index] <= bonfer
+  keep.vec[is.na(keep.vec)] <- FALSE
+  sub.df <- sub.df[keep.vec,]
+  if (dim(sub.df)[1]>0){
+    if (tiss.abrev!="multi"){
+      len <- dim(sub.df)[2]
+      names(sub.df)[(len-4):len] <- c("z","p","pred.perf.q","p_H3","p_H4")
+    } else{
+      sub.df$pred.perf.q <- NA; sub.df$p_H3 <- NA; sub.df$p_H4<-NA
+      len <- dim(sub.df)[2]
+      names(sub.df)[(len-4):(len-3)] <- c("z","p")
+    }
+    if (dim(sub.df)[1]>0){
+      sub.df$tissue <- filter(tiss.df,abrev==tiss.abrev)$full.name[1]
+      sub.df$tissue <- as.character(sub.df$tissue)  
+      sub.df$locus <- loc.sub$locus.id
+      sub.df$locus.start <- loc.sub$loc.start
+      sub.df$locus.end <- loc.sub$loc.end
+    }
+  }
+  return(sub.df)    
+}
+
+build_lws_df <- function(gwas.name){
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(loci.df)[1],style=3)
+  for (i in 1:dim(loci.df)[1]){
+    setTxtProgressBar(pb,i)
+    loc <- loci.df$locus.id[i]
+    for (t in tiss.names){
+      build.df <- get_lws_results(gwas.name,t,loc)
+      if (dim(build.df)[1]>0){
+        out.df <- rbind(out.df,build.df)
+      }
+    }    
+  }
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+scott.lws.df <- build_lws_df("scott")
+scottbmiadj.lws.df <- build_lws_df("scottadj")
+fg.lws.df <- build_lws_df("fg")
+fi.lws.df <- build_lws_df("fi")
+
+```
+
+
+```{r}
+
+write.table(scott.lws.df,file=df.dir%&%"Scott_T2D_lws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fg.lws.df,file=df.dir%&%"Magic_FG_lws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fi.lws.df,file=df.dir%&%"Magic_FI_T2D_lws-significant.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+```{r}
+
+scott.lws.full.df <- append_rep_info(scott.lws.df,"scott")
+scottbmiadj.lws.full.df <- append_rep_info(scottbmiadj.lws.df,"scott")
+
+write.table(scott.lws.full.df,file=df.dir%&%"Scott_T2D_lws-significant.full.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant.full.txt",sep="\t",quote=F,row.names=F)
 
 ```
 
