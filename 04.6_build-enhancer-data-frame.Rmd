@@ -1,0 +1,61 @@
+---
+title: "04.2_build-enhancer-data-frame.Rmd"
+author: "Jason Torres"
+date: "2/13/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+ref.dir <- rescomp.dir %&% "reference_files/"
+states.dir <- "/Users/jtorres/FUSE/reference/chromatin_segmentation/" %&% 
+  "varshney_2016/chromatin_states/"
+
+```
+
+
+```{r}
+
+write_chromseg_file <- function(){
+  files <- list.files(states.dir)
+  files <- files[grepl(".chromatinStates.bed.gz",files)]
+  out.df <- c() 
+  pb <- txtProgressBar(min=0,max=length(files),style=3)
+  for (i in 1:length(files)){
+    setTxtProgressBar(pb,i)
+    f <- files[i]
+    print(f)
+    tiss <- strsplit(f,split=".chromatinStates.bed.gz")[[1]][1]
+    sub.df <- fread("cat " %&% states.dir%&%f %&% " | zmore",sep="\t")
+    sub.df <- filter(sub.df,V4=="9_Active_enhancer_1") %>%
+      dplyr::select(.,one_of("V1","V2","V3"))
+    sub.df$V2 <- sub.df$V2 + 1; sub.df$V3 <- sub.df$V3 + 1
+    names(sub.df) <- c("chrom","start","end")
+    sub.df$tissue <- tiss
+    out.df <- rbind(out.df,sub.df)
+  }
+  write.table(x=out.df,file=df.dir%&%"varshney2016-strong-enhancers-s9.txt",
+              sep="\t",quote=FALSE,row.names=FALSE)  
+}
+
+
+```
+
+
+```{r}
+
+write_chromseg_file()
+
+```
+

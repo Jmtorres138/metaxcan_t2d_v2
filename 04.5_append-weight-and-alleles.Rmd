@@ -1,0 +1,116 @@
+---
+title: "Untitled"
+author: "Jason Torres"
+date: "2/13/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+ref.dir <- rescomp.dir %&% "reference_files/"
+mod.dir <- rescomp.dir %&% "model_snps/GTEx-V6p-HapMap-2016-09-08/"
+
+lws.scott.df <- fread(df.dir %&% "Scott_T2D_lws-significant.full.txt")
+gws.scott.df <- fread(df.dir %&% "Scott_T2D_gws-significant.full.txt")
+
+```
+
+
+```{r}
+
+##mod.df <- fread(df.dir %&% "model-snps-v6p_full.txt") # Very big file, do not load, just used once for a check 
+
+```
+
+
+```{r}
+
+mod.gws.df <- fread("cat " %&% df.dir %&% "model-snps-v6p_full_gws.txt.gz" %&% " | zmore")
+mod.gws.df <- mod.gws.df[!duplicated(mod.gws.df),]
+
+mod.lws.df <- fread("cat " %&% df.dir %&% "model-snps-v6p_full_lws.txt.gz" %&% " | zmore")
+mod.lws.df <- mod.lws.df[!duplicated(mod.lws.df),]
+
+```
+
+
+
+Check if any entries are missing 
+
+```{r}
+
+for (i in 1:dim(lws.scott.df)[1]){
+  ensid <- lws.scott.df$gene[i]
+  tiss <- ifelse(is.na(lws.scott.df$best.tissue[i]),lws.scott.df$tissue[i],lws.scott.df$best.tissue[i])
+  tiss <- ifelse(tiss=="Muscle-skeletal","Muscle_Skeletal",tiss)
+  tiss <- ifelse(tiss=="Adipose-subcutaneous","Adipose_Subcutaneous",tiss)
+  sub.df <- filter(mod.lws.df,GENE==ensid,Tissue==tiss)
+  if (dim(sub.df)[1]==0){
+    print(c(ensid,tiss))
+  }
+}
+
+```
+
+
+
+```{r}
+
+library("RSQLite")
+
+append_weight_info <- function(model.df){
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(model.df)[1],style=3)
+  for (i in 1:dim(model.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- model.df[i,]
+    ensid <- row.df$GENE
+    rsid <- row.df$RSID
+    tissue <- row.df$Tissue   
+    db <- dbConnect(SQLite(), dbname=mod.dir%&%"TW_"%&%tissue%&%"_0.5.db")
+    query.df <- dbGetQuery(db, "select rsid, weight, ref_allele, eff_allele  from weights where rsid='"%&%rsid%&%"' and gene='"%&%ensid%&%"'")
+    names(query.df)[1] <- "RSID"
+    build.df <- inner_join(row.df,query.df,by="RSID")
+    out.df <- rbind(out.df,build.df)
+  }
+  return(out.df)
+}
+
+
+```
+
+
+```{r}
+
+mod.gws.full.df <- append_weight_info(mod.gws.df)
+mod.lws.full.df <- append_weight_info(mod.lws.df)
+
+```
+
+
+
+```{r}
+
+write.table(x=mod.gws.full.df,file=df.dir%&%"model-snps_Scott_T2D_gws-significant.full.txt",sep="\t",quote=FALSE,row.names=FALSE)
+write.table(x=mod.lws.full.df,file=df.dir%&%"model-snps_Scott_T2D_lws-significant.full.txt",sep="\t",quote=FALSE,row.names=FALSE)
+
+```
+
+
+
+
+
