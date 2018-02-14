@@ -39,12 +39,14 @@ get_Neff <- function(ncases,ncontrols){
 
 ```
 
-**GERA**; 9747 T2D cases, 61857 controls
+**GERA**; 
+9747 T2D cases, 61857 controls total (all ancestries)
+7,111 T2D cases, 49,688 controls from Supplementary Table S4 from Cook and Morris (Eur J Hum Genet. 2016 Aug; 24(8): 1175–1180.) 
 **Scott**; 26676 T2D case and 132532 control subjects
 
 ```{r}
 
-gera.neff <- get_Neff(9747,61857)
+gera.neff <- get_Neff(7111,49688) 
 scott.neff <- get_Neff(26676,132532)
 
 ```
@@ -95,10 +97,16 @@ get_multi_df <- function(sub.df){
   for (i in 1:length(gwas.vec)){
     gws <- gwas.vec[i]
     id <- gwas.abrev[i]
-    z <- filter(sub.df,gwas==gws)$z_mean; z<-ifelse(length(z)==0,NA,z)
+    #z <- filter(sub.df,gwas==gws)$z_mean 
+    temp.df <- filter(sub.df,gwas==gws)
+    best.tissue <- temp.df$t_i_best
+    best.tissue <-ifelse(length(best.tissue)==0,NA,best.tissue)
+    zmin <- temp.df$z_min; zmax <- temp.df$z_max
+    z <- ifelse(abs(zmax)>abs(zmin),zmax,zmin)
+    z<-ifelse(length(z)==0,NA,z)
     p <- filter(sub.df,gwas==gws)$pvalue; p<-ifelse(length(p)==0,NA,p)
-    df <- data.frame(z,p,stringsAsFactors = FALSE)
-    names(df) <- c("multi."%&%id%&%".zmean","multi."%&%id%&%".p")
+    df <- data.frame(best.tissue,z,p,stringsAsFactors = FALSE)
+    names(df) <- c("multi."%&%id%&%".best_tissue","multi."%&%id%&%".z","multi."%&%id%&%".p")
     if (is.null(dim(out.df))==TRUE){
       out.df <- df
     } else{
@@ -107,8 +115,8 @@ get_multi_df <- function(sub.df){
   }
   meta <- meta_analyze_obs(p.vec=c(dplyr::select(out.df,matches(".scott.p"))%>%as.numeric(.),
                                    dplyr::select(out.df,matches(".gera.p"))%>%as.numeric(.)),
-                           z.vec=c(dplyr::select(out.df,matches(".scott.zmean"))%>%as.numeric(.),
-                                   dplyr::select(out.df,matches(".gera.zmean"))%>%as.numeric(.)),
+                           z.vec=c(dplyr::select(out.df,matches(".scott.z"))%>%as.numeric(.),
+                                   dplyr::select(out.df,matches(".gera.z"))%>%as.numeric(.)),
                            neff.vec=c(scott.neff,gera.neff))
   out.df <- cbind(out.df,meta[[1]],meta[[2]])
   l <- length(names(out.df))

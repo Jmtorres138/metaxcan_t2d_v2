@@ -20,6 +20,9 @@ library("tidyverse")
 
 local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
 rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+gardner.dir <- "/Users/jtorres/FUSE4/projects/metaxcan_t2d_v2/"
+coloc.dir <- gardner.dir %&% "t2d/runs/coloc/results/coloc_all/"
+
 df.dir <- rescomp.dir %&% "data_frames/"
 plot.dir <- rescomp.dir %&% "plots/"
 assoc.df <- fread(df.dir %&% "association_results.txt")
@@ -58,12 +61,16 @@ get_gws_results <- function(gwas.name,tiss.abrev,pred.perf.q=0.05){
   keep.vec[is.na(keep.vec)] <- FALSE
   sub.df <- sub.df[keep.vec,]
   if (tiss.abrev!="multi"){
+    a.df <- dplyr::select(sub.df,gene:gene.end)
+    a.df$best.tissue <- NA
+    b.df <- sub.df[,6:10]
+    sub.df <- cbind(a.df,b.df)
     len <- dim(sub.df)[2]
     names(sub.df)[(len-4):len] <- c("z","p","pred.perf.q","p_H3","p_H4")
   } else{
     sub.df$pred.perf.q <- NA; sub.df$p_H3 <- NA; sub.df$p_H4<-NA
     len <- dim(sub.df)[2]
-    names(sub.df)[(len-4):(len-3)] <- c("z","p")
+    names(sub.df)[(len-5):(len-3)] <- c("best.tissue","z","p")
   }
   if (dim(sub.df)[1]>0){
     sub.df$tissue <- filter(tiss.df,abrev==tiss.abrev)$full.name[1]
@@ -92,12 +99,12 @@ build_gws_df <- function(gwas.name){
 scott.sig.df <- build_gws_df("scott")
 scottbmiadj.sig.df <- build_gws_df("scottadj")
 fg.sig.df <- build_gws_df("fg")
-fi.sig.df <- build_gws_df("fi")
+fi.sig.df <- build_gws_df("fi") # empty 
 
 write.table(scott.sig.df,file=df.dir%&%"Scott_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(fg.sig.df,file=df.dir%&%"Magic_FG_gws-significant.txt",sep="\t",quote=F,row.names=F)
-write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F) # empty 
 
 ```
 
@@ -120,17 +127,33 @@ append_rep_info <- function(t2d.df,gwas.name){
                                  ifelse(tiss=="Adipose-subcutaneous","adi",
                                         ifelse(tiss=="cross-tissue","multi",NA)))))
     sub.df <- filter(assoc.df,gene==g)
-    if (tiss.abrev=="multi"){
-      gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".zmean")]
-    } else{
-      gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".z")]
-    }
+    #if (tiss.abrev=="multi"){
+    #  gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".zmean")]
+    #} else{
+    #  gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".z")]
+    #}
+    gera.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".z")]
     meta.z <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"meta"%&%".z")]
     gera.p <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".p")]
     meta.p <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"meta"%&%".p")]    
+    gera.besttiss <- sub.df[,which(names(sub.df)==tiss.abrev%&%"."%&%"gera"%&%".best_tissue")]    
     row.df$gera.z <- gera.z; row.df$gera.p <- gera.p; row.df$meta.z <- meta.z; row.df$meta.p <- meta.p
-    replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05)
+    #if (tiss.abrev!="multi"){
+    #  replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05)
+    #}
+    #else{
+    #  replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05) #& (gera.besttiss == row.df$best.tissue)
+    #}
+    replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05) #& (gera.besttiss == row.df$best.tissue)
+    if (tiss.abrev!="multi"){
+      total.replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05)
+    }
+    else{
+      total.replicated <- (meta.p < row.df$p) & (sign(row.df$z)==sign(gera.z)) & (gera.p <= 0.05) & (gera.besttiss == row.df$best.tissue)
+    }
     row.df$replicated <- replicated
+    row.df$total.replicated <- total.replicated
+
     out.df <- rbind(out.df,row.df)
   }
   return(out.df)
@@ -139,10 +162,41 @@ append_rep_info <- function(t2d.df,gwas.name){
 ```
 
 
+Add in coloc information for TissueXcan association 
+
 ```{r}
 
-scott.sig.full.df <- append_rep_info(scott.sig.df,"scott")
-scottbmiadj.sig.full.df <- append_rep_info(scottbmiadj.sig.df,"scott")
+append_coloc_info <- function(sig.full.df){
+  tiss.vec <- sig.full.df$best.tissue %>% na.omit(.) %>% unique(.)
+  pb <- txtProgressBar(min=0,max=length(tiss.vec),style=3)
+  for (i in 1:length(tiss.vec)){
+    setTxtProgressBar(pb,i)
+    t <- tiss.vec[i]
+    df <- fread(coloc.dir %&% "DIAGRAM_T2D_SCOTT_eQTL_" %&% t %&% ".txt")
+    gene.vec <- filter(sig.full.df,tissue=="cross-tissue",best.tissue==t)$gene
+    for (g in gene.vec){
+      sub.df <- filter(df,gene_id==g)
+      ph3 <- sub.df$P_H3; ph4 <-  sub.df$P_H4 
+      index <- intersect(which(sig.full.df$gene==g),which(sig.full.df$tissue=="cross-tissue"))
+      sig.full.df$p_H3[index] <- ph3
+      sig.full.df$p_H4[index] <- ph4 
+    }
+  }
+  return(sig.full.df)
+}
+
+
+#DIAGRAM_T2D_SCOTT_eQTL_Cells_EBV-transformed_lymphocytes.txt
+
+```
+
+
+
+
+```{r}
+
+scott.sig.full.df <- append_rep_info(scott.sig.df,"scott") #%>% append_coloc_info(.)
+scottbmiadj.sig.full.df <- append_rep_info(scottbmiadj.sig.df,"scott") #%>% append_coloc_info(.)
 
 write.table(scott.sig.full.df,file=df.dir%&%"Scott_T2D_gws-significant.full.txt",sep="\t",quote=F,row.names=F)
 write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.full.txt",sep="\t",quote=F,row.names=F)
@@ -160,7 +214,7 @@ get_lws_results <- function(gwas.name,tiss.abrev,loc.id,pred.perf.q=0.05){
   
   sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
                           matches(tiss.abrev%&%"."%&%gwas.name%&%"\\.")) %>% as.data.frame(.) %>% 
-    filter(., chrom==loc.sub$chrom, gene.start >= loc.sub$loc.start, gene.end <= loc.sub$loc.end)
+    filter(., chrom==loc.sub$chrom, gene.end >= loc.sub$loc.start, gene.start <= loc.sub$loc.end)
 
   if (tiss.abrev!="multi"){
     # Filter out NA's and genes with ppq > 0.05
@@ -177,12 +231,16 @@ get_lws_results <- function(gwas.name,tiss.abrev,loc.id,pred.perf.q=0.05){
   sub.df <- sub.df[keep.vec,]
   if (dim(sub.df)[1]>0){
     if (tiss.abrev!="multi"){
+      a.df <- dplyr::select(sub.df,gene:gene.end)
+      a.df$best.tissue <- NA
+      b.df <- sub.df[,6:10]
+      sub.df <- cbind(a.df,b.df)
       len <- dim(sub.df)[2]
       names(sub.df)[(len-4):len] <- c("z","p","pred.perf.q","p_H3","p_H4")
     } else{
       sub.df$pred.perf.q <- NA; sub.df$p_H3 <- NA; sub.df$p_H4<-NA
       len <- dim(sub.df)[2]
-      names(sub.df)[(len-4):(len-3)] <- c("z","p")
+      names(sub.df)[(len-5):(len-3)] <- c("best.tissue","z","p")
     }
     if (dim(sub.df)[1]>0){
       sub.df$tissue <- filter(tiss.df,abrev==tiss.abrev)$full.name[1]
@@ -229,15 +287,15 @@ fi.lws.df <- build_lws_df("fi")
 write.table(scott.lws.df,file=df.dir%&%"Scott_T2D_lws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(fg.lws.df,file=df.dir%&%"Magic_FG_lws-significant.txt",sep="\t",quote=F,row.names=F)
-write.table(fi.lws.df,file=df.dir%&%"Magic_FI_T2D_lws-significant.txt",sep="\t",quote=F,row.names=F)
+write.table(fi.lws.df,file=df.dir%&%"Magic_FI_lws-significant.txt",sep="\t",quote=F,row.names=F)
 
 ```
 
 
 ```{r}
 
-scott.lws.full.df <- append_rep_info(scott.lws.df,"scott")
-scottbmiadj.lws.full.df <- append_rep_info(scottbmiadj.lws.df,"scott")
+scott.lws.full.df <- append_rep_info(scott.lws.df,"scott") %>% append_coloc_info(.)
+scottbmiadj.lws.full.df <- append_rep_info(scottbmiadj.lws.df,"scott") # %>% append_coloc_info(.)
 
 write.table(scott.lws.full.df,file=df.dir%&%"Scott_T2D_lws-significant.full.txt",sep="\t",quote=F,row.names=F)
 write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant.full.txt",sep="\t",quote=F,row.names=F)
@@ -256,6 +314,7 @@ write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant.f
 dim(scott.sig.full.df)[1] # 57
 scott.sig.full.df <- arrange(scott.sig.full.df,replicated,p)
 length(unique(scott.sig.full.df$gene_name)) # 41 
+unique(scott.sig.full.df$gene_name) %>% sort(.)
 table(scott.sig.full.df$tissue)
 #Adipose-subcutaneous         cross-tissue                Liver      Muscle-skeletal             Pancreas 
 #                  11                   29                    4                    8                    5 
@@ -271,7 +330,7 @@ filter(scott.sig.full.df,gene_name %in% fi.sig.genes) # NULL
 filter(fi.sig.df,gene_name %in% scott.sig.full.df$gene_name) # NULL 
 
 scott.sig.full.df$replicated %>% na.omit(.) %>% sum(.) # 24 
-filter(scott.sig.full.df,replicated==TRUE)$gene_name %>% unique(.)
+filter(scott.sig.full.df,replicated==TRUE)$gene_name %>% unique(.) %>% sort(.)
 filter(scott.sig.full.df,replicated==TRUE)$tissue %>% table(.)
 #Adipose-subcutaneous         cross-tissue      Muscle-skeletal             Pancreas 
 #                   6                   11                    6                    1 
@@ -289,6 +348,7 @@ summary(filter(scott.sig.full.df,replicated==TRUE)$p_H4)
 dim(scott.lws.full.df)[1] # 142
 scott.lws.full.df <- arrange(scott.lws.full.df,replicated,p)
 length(unique(scott.lws.full.df$gene_name)) # 98 
+unique(scott.lws.full.df$gene_name) %>% sort(.)
 table(scott.lws.full.df$tissue)
 #Adipose-subcutaneous         cross-tissue                Liver      Muscle-skeletal             Pancreas 
 #                  23                   80                    8                   20                   11 
@@ -305,7 +365,7 @@ filter(scott.lws.full.df,gene_name %in% fi.lws.genes) # NULL
 filter(fi.lws.df,gene_name %in% scott.lws.full.df$gene_name) # NULL 
 
 scott.lws.full.df$replicated %>% na.omit(.) %>% sum(.) # 45 
-filter(scott.lws.full.df,replicated==TRUE)$gene_name %>% unique(.)
+filter(scott.lws.full.df,replicated==TRUE)$gene_name %>% unique(.) %>% sort(.)
 filter(scott.lws.full.df,replicated==TRUE)$tissue %>% table(.)
 #Adipose-subcutaneous         cross-tissue      Muscle-skeletal             Pancreas 
 #                   6                   11                    6                    1 
@@ -335,6 +395,7 @@ ggplot2::ggsave(plot=scott.lws.rep.tab,
 dim(scottbmiadj.sig.full.df)[1] # 41
 scottbmiadj.sig.full.df <- arrange(scottbmiadj.sig.full.df,replicated,p)
 length(unique(scottbmiadj.sig.full.df$gene_name)) # 29 
+unique(scottbmiadj.sig.full.df$gene_name) %>% sort(.)
 table(scottbmiadj.sig.full.df$tissue)
 #Adipose-subcutaneous         cross-tissue                Liver      Muscle-skeletal 
 #                   9                   19                    2                    5 
@@ -359,6 +420,7 @@ filter(fi.sig.df,gene_name %in% scottbmiadj.sig.full.df$gene_name) # NULL
 dim(scottbmiadj.lws.full.df)[1] # 104
 scottbmiadj.lws.full.df <- arrange(scottbmiadj.lws.full.df,replicated,p)
 length(unique(scottbmiadj.lws.full.df$gene_name)) # 66 
+unique(scottbmiadj.lws.full.df$gene_name) %>% sort(.)
 "IRX3" %in% unique(scottbmiadj.lws.full.df$gene_name) # FALSE
 table(scottbmiadj.lws.full.df$tissue)
 #Adipose-subcutaneous         cross-tissue                Liver      Muscle-skeletal 
