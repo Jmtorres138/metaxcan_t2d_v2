@@ -1,0 +1,312 @@
+---
+title: "02.3"
+author: "Jason Torres"
+date: "February 7, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+ref.dir <- rescomp.dir %&% "reference_files/"
+nhgri.df <- fread(ref.dir %&% "gwas-association-downloaded_2018-02-04-type2diabetes.tsv")
+grasp.df <- fread(ref.dir %&% "GRASP_Search_Feb4-2018-T2D-T2D-Pe8.txt")
+
+assoc.df <- fread(df.dir %&% "association_results.txt")
+
+loci.df <- fread(df.dir %&% "gwas_windows.txt") 
+
+```
+
+
+# Build loci genes annotated data frame 
+
+Compile list of reported genes as a reference 
+
+```{r}
+
+grasp.ingenes <- grasp.df$InGene %>% unique(.) %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(")(",s,fixed=TRUE)){
+    vec <- strsplit(s,split=")(",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  for (e in vec){
+    r <- gsub("(","",e,fixed=TRUE) %>%   gsub(")","",.,fixed=TRUE)
+    out.vec <- append(out.vec,r)
+  }
+  return(out.vec)
+}) %>% unlist(.)
+grasp.nearest <- grasp.df$NearestGene %>% unique(.) %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(")(",s,fixed=TRUE)){
+    vec <- strsplit(s,split=")(",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  for (e in vec){
+    r <- gsub("(","",e,fixed=TRUE) %>%   gsub(")","",.,fixed=TRUE)
+    out.vec <- append(out.vec,r)
+  }
+  return(out.vec)
+}) %>% unlist(.)
+nhgri.reported <- nhgri.df$`REPORTED GENE(S)` %>% unique(.)  %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(", ",s,fixed=TRUE)){
+    vec <- strsplit(s,split=", ",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  out.vec <- append(out.vec,vec)
+  return(out.vec)
+}) %>% unlist(.)
+manual.vec <- c("C15orf38","AP3S2","CDKN2A","CDKN2B","CTRB1","CTRB2","PROX1","C2CD4A","C2CD4B")
+known.vec <- c(grasp.ingenes,grasp.nearest,nhgri.reported,manual.vec) %>% unique(.) 
+
+
+```
+
+
+
+# Build loci genes data frame 
+
+
+```{r}
+
+
+build_locus_core_df <- function(){
+  all.genes.df <- dplyr::select(assoc.df,gene:gene.end)
+  all.genes.df <- all.genes.df[!duplicated(all.genes.df),]
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(loci.df)[1],style=3)
+  for (i in 1:dim(loci.df)[1]){
+    setTxtProgressBar(pb,i)
+    chro <- loci.df$chrom[i]
+    loc.start <- loci.df$loc.start[i]
+    loc.end <- loci.df$loc.end[i]
+    loc.id <- loci.df$locus.id[i]
+    sub.df <- filter(all.genes.df,chrom==chro,gene.end>=loc.start,gene.start<=loc.end)
+    if (dim(sub.df)[1]>0){
+      sub.df$locus.id <- loc.id
+      sub.df$loc.start <- loc.start
+      sub.df$loc.end <- loc.end
+      build.df <- dplyr::select(sub.df,one_of("locus.id","chrom","loc.start","loc.end","gene","gene_name",
+                                              "gene.start","gene.end"))
+      out.df <- rbind(out.df,build.df)    
+    } else{
+      print(loc.id)
+    }
+  }
+  out.df$reported_gene <- out.df$gene_name %in% known.vec  
+  return(out.df)
+}
+
+
+```
+
+
+
+Add in significant information 
+
+```{r}
+
+lws.scott.df <- fread(df.dir %&% "Scott_T2D_lws-significant.full.txt")
+lws.scottadj.df <- fread(df.dir %&% "Scott_T2D_BMIadj_lws-significant.txt")
+lws.fg.df <- fread(df.dir %&% "Magic_FG_lws-significant.txt")
+lws.fi.df <- fread(df.dir %&% "Magic_FI_lws-significant.txt")
+
+append_to_core <- function(loc.core.df){
+  loc.core.df$lws.scott <- loc.core.df$gene_name %in% lws.scott.df$gene_name
+  loc.core.df$lws.scottadj <- loc.core.df$gene_name %in% lws.scottadj.df$gene_name
+  loc.core.df$lws.fg <- loc.core.df$gene_name %in% lws.fg.df$gene_name
+  loc.core.df$lws.fi <- loc.core.df$gene_name %in% lws.fi.df$gene_name
+  return(loc.core.df)
+}
+
+```
+
+
+For loci with signficant gene associations, determine if only known genes, only novel genes, or both types are significant
+
+```{r}
+
+classify_locus_type <- function(loc.profile.df){
+  only.known <- c()
+  shared <- c() 
+  only.novel <- c()
+  for (i in 1:dim(loc.profile.df)[1]){
+    id <- loc.profile.df$locus.id[i]
+    sub.df <- filter(loc.profile.df,locus.id==id)
+    sig.genes <- filter(sub.df,lws.scott==TRUE)$gene_name
+    rep.genes <- filter(sub.df,reported_gene==TRUE)$gene_name
+    if (all(sig.genes%in%rep.genes)){
+      only.known <- append(only.known,id)
+    } else if (all(!(sig.genes%in%rep.genes))){
+      only.novel <- append(only.novel,id)
+    } else{
+      shared <- append(shared,id)
+    }
+  }
+  only.known <- only.known %>% unique(.)
+  shared <- shared  %>% unique(.)
+  only.novel <- only.novel %>% unique(.)
+  sub1.df <- filter(loc.profile.df,locus.id %in% only.known, lws.scott==TRUE)
+  sub1.df$locus.type <- "only.known"
+  sub2.df <- filter(loc.profile.df,locus.id %in% shared, lws.scott==TRUE)
+  sub2.df$locus.type <- "shared"
+  sub3.df <- filter(loc.profile.df,locus.id %in% only.novel, lws.scott==TRUE)
+  sub3.df$locus.type <- "only.novel"
+  out.df <- rbind(sub1.df,sub2.df,sub3.df)
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+loc.profile.df <- build_locus_core_df() %>% append_to_core(.) 
+write.table(loc.profile.df,file=df.dir%&%"locus-profile.txt",sep="\t",quote=F,row.names=F)
+# Note: locus 38 doesn't have any tested genes 
+
+sigloc.df <- classify_locus_type(loc.profile.df)
+write.table(sigloc.df,file=df.dir%&%"significant-loci.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+# Evaluate data frame 
+
+
+```{r}
+
+loc.profile.df$locus.id %>% unique(.) %>% length(.) # There are 39 out of 40 considered gwas loci with tested genes 
+summary(loci.df$loc.end - loci.df$loc.start) # loci windows range from 1M to 1.4M base pairs with median 105M bps 
+#Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#1000000 1013000 1052000 1099000 1121000 1432000 
+filter(loc.profile.df,reported_gene==TRUE)$locus.id %>% unique(.) %>% length(.) # 37/39 loci have a reported gene 
+# Loci Ids: filter(loc.profile.df,reported_gene==TRUE)$locus.id %>% unique(.)
+# [1]  1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 39
+# reported genes: filter(loc.profile.df,reported_gene==TRUE)$gene_name %>% unique(.)
+
+filter(loc.profile.df,lws.scott==TRUE)$locus.id %>% unique(.) %>% length(.) # 32/39 loci have at least one significant metaXcan/tissueXcan association 
+
+filter(loc.profile.df,lws.scott==TRUE)$gene_name  %>% unique(.) %>% length(.) # 104 genes are lws for T2D 
+
+(filter(loc.profile.df,lws.scott==TRUE)$gene_name %>% unique(.)) %in% (unique(known.vec)) %>% sum(.)
+# 24 / 104 genes are "known" 
+filter(loc.profile.df,lws.scott==TRUE,reported_gene==TRUE)$gene_name %>% unique(.)
+
+# Here are the novel genes 
+filter(loc.profile.df,lws.scott==TRUE,reported_gene==FALSE)$gene_name %>% unique(.) %>% length(.) # 80 novel genes in loci
+
+
+
+```
+
+Of the 32/39 loci with significant associations, 6 loci have only known genes as sig, 11 loci have only novel as sig, and 15 loci have both as sig 
+
+```{r}
+
+sub.df <- dplyr::select(sigloc.df,one_of("locus.id","locus.type"))
+sub.df <- sub.df[!duplicated(sub.df),]
+table(sub.df$locus.type)
+#only.known only.novel     shared 
+#         6         11         15 
+
+```
+
+Reported genes are have more significant associations than novel genes 
+
+```{r}
+
+reported.genes <- filter(loc.profile.df,reported_gene==TRUE,lws.scott==TRUE)$gene_name %>% unique(.)
+novel.genes <- filter(loc.profile.df,reported_gene==FALSE,lws.scott==TRUE)$gene_name %>% unique(.)
+
+reported.pvec <- filter(lws.scott.df,gene_name %in% reported.genes)$p %>% -log(.,base=10)
+novel.pvec <- filter(lws.scott.df,gene_name %in% novel.genes)$p %>% -log(.,base=10)
+boxplot(reported.pvec,novel.pvec)
+median(reported.pvec) # 6.233054
+median(novel.pvec) # 3.228781
+
+```
+
+
+Prediction model SNPs for known genes (significant genes) are much more colocalized with T2D SNPs than for novel genes 
+
+```{r}
+
+reported.h4vec <- filter(lws.scott.df,gene_name %in% reported.genes)$p_H4 %>% na.omit(.)
+novel.h4vec <- filter(lws.scott.df,gene_name %in% novel.genes)$p_H4 %>% na.omit(.)
+boxplot(reported.h4vec,novel.h4vec)
+median(reported.h4vec) # 0.8216797
+median(novel.h4vec) # 0.0316579
+
+reported.h3vec <- filter(lws.scott.df,gene_name %in% reported.genes)$p_H3 %>% na.omit(.)
+novel.h3vec <- filter(lws.scott.df,gene_name %in% novel.genes)$p_H3 %>% na.omit(.)
+boxplot(reported.h3vec,novel.h3vec)
+median(reported.h3vec) # 0.1671295
+median(novel.h3vec) # 0.5746099
+
+```
+
+
+# Evaluation of Replicated gene associations 
+
+Reported genes are have more significant associations than novel genes 
+
+```{r}
+
+reported.pvec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% reported.genes)$p %>% -log(.,base=10)
+novel.pvec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% novel.genes)$p %>% -log(.,base=10)
+boxplot(reported.pvec,novel.pvec)
+median(reported.pvec) # 6.393186
+median(novel.pvec) # 3.116323
+
+```
+
+
+Prediction model SNPs for known genes (significant genes) are much more colocalized with T2D SNPs than for novel genes 
+
+```{r}
+
+reported.h4vec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% reported.genes)$p_H4 %>% na.omit(.)
+novel.h4vec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% novel.genes)$p_H4 %>% na.omit(.)
+boxplot(reported.h4vec,novel.h4vec)
+median(reported.h4vec) # 0.6703288
+median(novel.h4vec) # 0.04748095
+
+reported.h3vec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% reported.genes)$p_H3 %>% na.omit(.)
+novel.h3vec <- filter(lws.scott.df,replicated==TRUE,gene_name %in% novel.genes)$p_H3 %>% na.omit(.)
+boxplot(reported.h3vec,novel.h3vec)
+median(reported.h3vec) # 0.2533253
+median(novel.h3vec) # 0.4232027
+
+```
+
+
+Top novel genes to consider 
+
+
+```{r}
+
+filter(lws.scott.df,replicated==TRUE,gene_name %in% novel.genes) %>% arrange(.,desc(p_H4))
+
+```
+
+
