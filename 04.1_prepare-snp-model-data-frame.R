@@ -49,16 +49,3 @@ write.table(x=out.df,file=cur.dir%&%"model-snps-v6p.txt",sep="\t",quote=FALSE,ro
 
 
 
-
-# Append Position information (Run in Rescomp)
-
-
-
-
-mod.df <- fread("cat " %&% mod.dir %&% "model-snps-v6p.txt")
-snp.df <- fread("cat " %&% mod.dir %&% "snp_keyfile.txt.gz" %&% " | zmore")
-full.df <- inner_join(mod.df,snp.df,by="RSID")
-write.table(x=full.df,file=df.dir%&%"model-snps-v6p_full.txt",
-            sep="\t",quote=FALSE,row.names=FALSE) 
-
-
