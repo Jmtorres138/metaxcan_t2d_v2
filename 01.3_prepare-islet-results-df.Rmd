@@ -121,9 +121,13 @@ build_islet_assoc_df <- function(full.df){
     meta.list <- meta_analyze_obs(p.vec=c(scott.p,gera.p),z.vec=c(scott.z,gera.z),
                      neff.vec=c(scott.neff,gera.neff))
     meta.z <- meta.list[[1]]; meta.p <- meta.list[[2]]
+    meta.list2 <- meta_analyze_obs(p.vec=c(scottadj.p,gera.p),z.vec=c(scottadj.z,gera.z),
+                     neff.vec=c(scott.neff,gera.neff))
+    meta.z.scottadj <- meta.list2[[1]]; meta.p.scottadj <- meta.list2[[2]]
     build.df <- data.frame(gene,gene_name,scott.z,scott.p,
                            scottadj.z,scottadj.p,gera.z,gera.p,
-                           fi.z,fi.p,fg.z,fg.p,meta.z,meta.p,stringsAsFactors = FALSE)
+                           fi.z,fi.p,fg.z,fg.p,meta.z,meta.p,
+                           meta.z.scottadj,meta.p.scottadj,stringsAsFactors = FALSE)
     out.df <- rbind(out.df,build.df)
   }
   return(out.df)
