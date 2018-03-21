@@ -1,0 +1,354 @@
+---
+title: "Untitled"
+author: "Jason Torres"
+date: "March 21, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+assoc.df <- fread(df.dir %&% "islet_association.txt")
+
+loci.df <- fread(df.dir %&% "gwas_windows.txt")
+
+gwas.names <- c("scott","scottadj","fi","fg")
+
+```
+
+
+
+```{r}
+
+get_gws_results <- function(gwas.name){
+  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
+                          matches(gwas.name%&%"\\.")) %>% as.data.frame(.)
+
+  bonfer <- 0.05 / dim(sub.df)[1]
+  # keep bonferonni associations 
+  index <- which(names(sub.df)==gwas.name%&%".p") 
+  keep.vec <- sub.df[,index] <= bonfer
+  keep.vec[is.na(keep.vec)] <- FALSE
+  sub.df <- sub.df[keep.vec,]
+  sub.df$tissue <- "islet"
+  return(sub.df)
+}
+
+```
+
+
+```{r}
+
+scott.sig.df <- get_gws_results("scott")
+scottbmiadj.sig.df <- get_gws_results("scottadj")
+fg.sig.df <- get_gws_results("fg")
+#fi.sig.df <- get_gws_results("fi") # empty 
+
+#write.table(scott.sig.df,file=df.dir%&%"Scott_T2D_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+#write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+write.table(fg.sig.df,file=df.dir%&%"Magic_FG_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+#write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F) # empty 
+```
+
+
+Append GERA and meta-analysis results for the T2D results  
+
+```{r}
+
+append_rep_info <- function(t2d.df,gwas.name,adj=FALSE){
+  # gwas.name is either scott or scottadj
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(t2d.df)[1],style=3)
+  for (i in 1:dim(t2d.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- t2d.df[i,]
+    g <- row.df$gene
+    sub.df <- filter(assoc.df,gene==g)
+    if (adj==TRUE){
+      gera.z <- sub.df[,which(names(sub.df)=="gera"%&%".z")]
+      meta.z <- sub.df[,which(names(sub.df)=="meta"%&%".z.scottadj")]
+      gera.p <- sub.df[,which(names(sub.df)=="gera"%&%".p")]
+      meta.p <- sub.df[,which(names(sub.df)=="meta"%&%".p.scottadj")]        
+    } else{
+      gera.z <- sub.df[,which(names(sub.df)=="gera"%&%".z")]
+      meta.z <- sub.df[,which(names(sub.df)=="meta"%&%".z")]
+      gera.p <- sub.df[,which(names(sub.df)=="gera"%&%".p")]
+      meta.p <- sub.df[,which(names(sub.df)=="meta"%&%".p")]   
+    }
+    row.df$gera.z <- gera.z; row.df$gera.p <- gera.p; row.df$meta.z <- meta.z; row.df$meta.p <- meta.p
+    if (adj==TRUE){
+      replicated <- (meta.p < row.df$scottadj.p) & 
+        (sign(row.df$scottadj.z)==sign(gera.z)) & (gera.p <= 0.05) 
+    } else{
+      replicated <- (meta.p < row.df$scott.p) &
+        (sign(row.df$scott.z)==sign(gera.z)) & (gera.p <= 0.05) 
+    }
+    row.df$replicated <- replicated
+    out.df <- rbind(out.df,row.df)
+  }
+  return(out.df)
+}
+
+
+```
+
+
+```{r}
+scott.sig.full.df <- append_rep_info(scott.sig.df,"scott") #%>% append_coloc_info(.)
+scottbmiadj.sig.full.df <- append_rep_info(scottbmiadj.sig.df,"scottadj",adj=TRUE) #%>% append_coloc_info(.)
+
+write.table(scott.sig.full.df,file=df.dir%&%"Scott_T2D_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+```
+
+
+# Locus-wide significant results 
+
+```{r}
+
+get_lws_results <- function(gwas.name,loc.id){
+  loc.sub <- filter(loci.df,locus.id==loc.id)
+  
+  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
+                          matches(gwas.name%&%"\\.")) %>% as.data.frame(.) %>% 
+    filter(., chrom==loc.sub$chrom, gene.end >= loc.sub$loc.start, gene.start <= loc.sub$loc.end)
+
+  bonfer <- 0.05 / dim(sub.df)[1]
+  # keep bonferonni associations 
+  index <- which(names(sub.df)==gwas.name%&%".p") 
+  keep.vec <- sub.df[,index] <= bonfer
+  keep.vec[is.na(keep.vec)] <- FALSE
+  sub.df <- sub.df[keep.vec,]
+  if (dim(sub.df)[1]>0){
+    sub.df$locus <- loc.sub$locus.id
+    sub.df$locus.start <- loc.sub$loc.start
+    sub.df$locus.end <- loc.sub$loc.end
+  }
+  return(sub.df)    
+}
+
+build_lws_df <- function(gwas.name){
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(loci.df)[1],style=3)
+  for (i in 1:dim(loci.df)[1]){
+    setTxtProgressBar(pb,i)
+    loc <- loci.df$locus.id[i]
+    build.df <- get_lws_results(gwas.name,loc)
+    if (dim(build.df)[1]>0){
+      out.df <- rbind(out.df,build.df)
+    }
+  }
+  return(out.df)
+}
+
+
+```
+
+```{r}
+
+scott.lws.df <- build_lws_df("scott")
+scottbmiadj.lws.df <- build_lws_df("scottadj")
+fg.lws.df <- build_lws_df("fg")
+fi.lws.df <- build_lws_df("fi")
+
+```
+
+
+```{r}
+
+write.table(fg.lws.df,file=df.dir%&%"Magic_FG_lws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+write.table(fi.lws.df,file=df.dir%&%"Magic_FI_lws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+```{r}
+
+scott.lws.full.df <- append_rep_info(scott.lws.df,"scott") #%>% append_coloc_info(.)
+scottbmiadj.lws.full.df <- append_rep_info(scottbmiadj.lws.df,"scott",adj=TRUE)
+
+write.table(scott.lws.full.df,file=df.dir%&%"Scott_T2D_lws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+write.table(scottbmiadj.lws.df,file=df.dir%&%"Scott_T2D_BMIadj_lws-significant_Islet.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+# Profile Genes (adapted from script 02.3)
+
+
+```{r}
+
+ref.dir <- rescomp.dir %&% "reference_files/"
+nhgri.df <- fread(ref.dir %&% "gwas-association-downloaded_2018-02-04-type2diabetes.tsv")
+grasp.df <- fread(ref.dir %&% "GRASP_Search_Feb4-2018-T2D-T2D-Pe8.txt")
+
+```
+
+
+Compile list of reported genes as a reference 
+
+```{r}
+
+grasp.ingenes <- grasp.df$InGene %>% unique(.) %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(")(",s,fixed=TRUE)){
+    vec <- strsplit(s,split=")(",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  for (e in vec){
+    r <- gsub("(","",e,fixed=TRUE) %>%   gsub(")","",.,fixed=TRUE)
+    out.vec <- append(out.vec,r)
+  }
+  return(out.vec)
+}) %>% unlist(.)
+grasp.nearest <- grasp.df$NearestGene %>% unique(.) %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(")(",s,fixed=TRUE)){
+    vec <- strsplit(s,split=")(",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  for (e in vec){
+    r <- gsub("(","",e,fixed=TRUE) %>%   gsub(")","",.,fixed=TRUE)
+    out.vec <- append(out.vec,r)
+  }
+  return(out.vec)
+}) %>% unlist(.)
+nhgri.reported <- nhgri.df$`REPORTED GENE(S)` %>% unique(.)  %>% map(.,function(s){
+  out.vec <- c()
+  if (grepl(", ",s,fixed=TRUE)){
+    vec <- strsplit(s,split=", ",fixed=TRUE)[[1]]
+  } else{
+    vec <- c(s)
+  }
+  out.vec <- append(out.vec,vec)
+  return(out.vec)
+}) %>% unlist(.)
+manual.vec <- c("C15orf38","AP3S2","CDKN2A","CDKN2B","CTRB1","CTRB2","PROX1","C2CD4A","C2CD4B")
+known.vec <- c(grasp.ingenes,grasp.nearest,nhgri.reported,manual.vec) %>% unique(.) 
+
+
+```
+
+
+
+```{r}
+
+build_locus_core_df <- function(){
+  all.genes.df <- dplyr::select(assoc.df,gene:gene.end)
+  all.genes.df <- all.genes.df[!duplicated(all.genes.df),]
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(loci.df)[1],style=3)
+  for (i in 1:dim(loci.df)[1]){
+    setTxtProgressBar(pb,i)
+    chro <- loci.df$chrom[i]
+    loc.start <- loci.df$loc.start[i]
+    loc.end <- loci.df$loc.end[i]
+    loc.id <- loci.df$locus.id[i]
+    sub.df <- filter(all.genes.df,chrom==chro,gene.end>=loc.start,gene.start<=loc.end)
+    if (dim(sub.df)[1]>0){
+      sub.df$locus.id <- loc.id
+      sub.df$loc.start <- loc.start
+      sub.df$loc.end <- loc.end
+      build.df <- dplyr::select(sub.df,one_of("locus.id","chrom","loc.start","loc.end",
+                                              "gene","gene_name",
+                                              "gene.start","gene.end"))
+      out.df <- rbind(out.df,build.df)    
+    } else{
+      print(loc.id)
+    }
+  }
+  out.df$reported_gene <- out.df$gene_name %in% known.vec  
+  return(out.df)
+}
+
+```
+
+
+
+Add in significant information 
+
+```{r}
+
+lws.scott.df <- fread(df.dir %&% "Scott_T2D_lws-significant_Islet.txt")
+lws.scottadj.df <- fread(df.dir %&% "Scott_T2D_BMIadj_lws-significant_Islet.txt")
+lws.fg.df <- fread(df.dir %&% "Magic_FG_lws-significant_Islet.txt")
+lws.fi.df <- fread(df.dir %&% "Magic_FI_lws-significant_Islet.txt")
+
+append_to_core <- function(loc.core.df){
+  loc.core.df$lws.scott <- loc.core.df$gene_name %in% lws.scott.df$gene_name
+  loc.core.df$lws.scottadj <- loc.core.df$gene_name %in% lws.scottadj.df$gene_name
+  loc.core.df$lws.fg <- loc.core.df$gene_name %in% lws.fg.df$gene_name
+  loc.core.df$lws.fi <- loc.core.df$gene_name %in% lws.fi.df$gene_name
+  return(loc.core.df)
+}
+
+```
+
+
+For loci with signficant gene associations, determine if only known genes, only novel genes, or both types are significant
+
+```{r}
+
+classify_locus_type <- function(loc.profile.df){
+  only.known <- c()
+  shared <- c() 
+  only.novel <- c()
+  for (i in 1:dim(loc.profile.df)[1]){
+    id <- loc.profile.df$locus.id[i]
+    sub.df <- filter(loc.profile.df,locus.id==id)
+    sig.genes <- filter(sub.df,lws.scott==TRUE)$gene_name
+    rep.genes <- filter(sub.df,reported_gene==TRUE)$gene_name
+    if (all(sig.genes%in%rep.genes)){
+      only.known <- append(only.known,id)
+    } else if (all(!(sig.genes%in%rep.genes))){
+      only.novel <- append(only.novel,id)
+    } else{
+      shared <- append(shared,id)
+    }
+  }
+  only.known <- only.known %>% unique(.)
+  shared <- shared  %>% unique(.)
+  only.novel <- only.novel %>% unique(.)
+  sub1.df <- filter(loc.profile.df,locus.id %in% only.known, lws.scott==TRUE)
+  sub1.df$locus.type <- "only.known"
+  sub2.df <- filter(loc.profile.df,locus.id %in% shared, lws.scott==TRUE)
+  sub2.df$locus.type <- "shared"
+  sub3.df <- filter(loc.profile.df,locus.id %in% only.novel, lws.scott==TRUE)
+  sub3.df$locus.type <- "only.novel"
+  out.df <- rbind(sub1.df,sub2.df,sub3.df)
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+loc.profile.df <- build_locus_core_df() %>% append_to_core(.) 
+write.table(loc.profile.df,file=df.dir%&%"locus-profile_Islet.txt",sep="\t",quote=F,row.names=F)
+# Note: locus 38 doesn't have any tested genes 
+
+sigloc.df <- classify_locus_type(loc.profile.df)
+write.table(sigloc.df,file=df.dir%&%"significant-loci_Islet.txt",sep="\t",quote=F,row.names=F)
+
+```
+
+
+
+
