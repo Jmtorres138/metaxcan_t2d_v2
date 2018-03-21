@@ -1,0 +1,103 @@
+---
+title: '01.3'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+server.dir <- "/home/jason/science/servers/FUSE5/"
+local.dir <- "/home/jason/science/projects/metaxcan_t2d_v2/" 
+#/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+assoc.df <- fread(df.dir %&% "association_results.txt")
+names(assoc.df)
+
+```
+
+
+Read in islet TissueXcan results 
+
+```{r}
+
+islet.dir <- rescomp.dir %&% "islet_results/islets/"
+scott.df <- fread(islet.dir %&% "DIAGRAM_T2D_SCOTT_Islet.csv")
+scottadj.df <- fread(islet.dir %&% "DIAGRAM_T2D_SCOTT_BMI_ADJ_Islet.csv")
+gera.df <- fread(islet.dir %&% "GERA_DIA2_Islet.csv")
+fg.df <- fread(islet.dir %&% "MAGIC_FastingGlucose_Islet.csv")
+fi.df <- fread(islet.dir %&% "MAGIC_ln_FastingInsulin_Islet.csv")
+scott.df$study <- "Scott"
+scottadj.df$study <- "Scott_BMI_adj"
+gera.df$study <- "GERA"
+fi.df$study <- "MAGIC_FI"
+fg.df$study <- "MAGIC_FG"
+full.df <- rbind(scott.df,scottadj.df,gera.df,fg.df,fi.df)
+
+```
+
+
+# Build association df
+
+```{r}
+
+build_islet_assoc_df <- function(full.df){
+  gene.vec <- unique(full.df$gene)
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=length(gene.vec),style=3)
+  for (i in 1:length(gene.vec)){
+    setTxtProgressBar(pb,i)
+    g <- gene.vec[i]
+    sub.df <- filter(full.df,gene==g)
+    gene <- g 
+    gene_name <- sub.df$gene_name[1]
+    scott.z <- filter(sub.df,study=="Scott")$zscore
+    scott.p <- filter(sub.df,study=="Scott")$pvalue
+    scottadj.z <- filter(sub.df,study=="Scott_BMI_adj")$zscore
+    scottadj.p <- filter(sub.df,study=="Scott_BMI_adj")$pvalue
+    gera.z <- filter(sub.df,study=="GERA")$zscore
+    gera.p <- filter(sub.df,study=="GERA")$pvalue
+    fi.z <- filter(sub.df,study=="MAGIC_FI")$zscore
+    fi.p <- filter(sub.df,study=="MAGIC_FI")$pvalue
+    fg.z <- filter(sub.df,study=="MAGIC_FG")$zscore
+    fg.p <- filter(sub.df,study=="MAGIC_FG")$pvalue
+    scott.p <- ifelse(length(scott.p)==0,NA,scott.p)
+    scott.z <- ifelse(length(scott.z)==0,NA,scott.z)
+    scottadj.p <- ifelse(length(scottadj.p)==0,NA,scottadj.p)
+    scottadj.z <- ifelse(length(scottadj.z)==0,NA,scottadj.z)
+    gera.p <- ifelse(length(gera.p)==0,NA,gera.p)
+    gera.z <- ifelse(length(gera.z)==0,NA,gera.z)
+    fi.p <- ifelse(length(fi.p)==0,NA,fi.p)
+    fi.z <- ifelse(length(fi.z)==0,NA,fi.z)
+    fg.p <- ifelse(length(fg.p)==0,NA,fg.p)
+    fg.z <- ifelse(length(fg.z)==0,NA,fg.z)
+
+    build.df <- data.frame(gene,gene_name,scott.z,scott.p,
+                           scottadj.z,scottadj.p,gera.z,gera.p,
+                           fi.z,fi.p,fg.z,fg.p,stringsAsFactors = FALSE)
+    out.df <- rbind(out.df,build.df)
+  }
+  return(out.df)
+}
+
+```
+
+
+```{r}
+
+islet.assoc.df <- build_islet_assoc_df(full.df)
+write.table(islet.assoc.df, df.dir %&% "islet_association.txt",sep="\t",
+            quote=F,row.names=F)
+
+```
+
