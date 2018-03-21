@@ -99,12 +99,12 @@ build_gws_df <- function(gwas.name){
 scott.sig.df <- build_gws_df("scott")
 scottbmiadj.sig.df <- build_gws_df("scottadj")
 fg.sig.df <- build_gws_df("fg")
-fi.sig.df <- build_gws_df("fi") # empty 
+#fi.sig.df <- build_gws_df("fi") # empty 
 
 write.table(scott.sig.df,file=df.dir%&%"Scott_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(scottbmiadj.sig.df,file=df.dir%&%"Scott_T2D_BMIadj_gws-significant.txt",sep="\t",quote=F,row.names=F)
 write.table(fg.sig.df,file=df.dir%&%"Magic_FG_gws-significant.txt",sep="\t",quote=F,row.names=F)
-write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F) # empty 
+#write.table(fi.sig.df,file=df.dir%&%"Magic_FI_T2D_gws-significant.txt",sep="\t",quote=F,row.names=F) # empty 
 
 ```
 
