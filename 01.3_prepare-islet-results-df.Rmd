@@ -49,6 +49,43 @@ full.df <- rbind(scott.df,scottadj.df,gera.df,fg.df,fi.df)
 
 # Build association df
 
+Meta-analysis functions 
+
+
+```{r}
+
+get_Neff <- function(ncases,ncontrols){
+  return(4/(1/ncases + 1/ncontrols))
+}
+
+gera.neff <- get_Neff(7111,49688) 
+scott.neff <- get_Neff(26676,132532)
+
+meta_analyze_obs <- function(p.vec,z.vec,neff.vec){
+  if (length(p.vec)!=length(z.vec) | length(p.vec) != length(neff.vec)){
+    stop("vectors do not agree in length")
+  }
+  # p.vec is vector of pvalues for a single observation across studies (i.e. SNP or gene)
+  # z.vec is vector of zscores for a single observation across studies (i.e. SNP or gene)
+  # neff.vec is vector of effective sample sizes across studies 
+  len <- length(p.vec)
+  numer.vec <- c(); denom.vec <- c()
+  for (i in 1:len){
+    z_i <- qnorm(p.vec[i]/2) * -1*sign(z.vec[i])
+    w_i <- sqrt(neff.vec[i])
+    numer.vec <- append(numer.vec, (z_i * w_i))
+    denom.vec <- append(denom.vec, (w_i)^2)
+  }
+  Z = sum(numer.vec) / sqrt(sum(denom.vec))
+  P = 2*pnorm(-abs(Z))
+  return(list(Z,P))
+}
+
+```
+
+
+
+
 ```{r}
 
 build_islet_assoc_df <- function(full.df){
@@ -81,10 +118,12 @@ build_islet_assoc_df <- function(full.df){
     fi.z <- ifelse(length(fi.z)==0,NA,fi.z)
     fg.p <- ifelse(length(fg.p)==0,NA,fg.p)
     fg.z <- ifelse(length(fg.z)==0,NA,fg.z)
-
+    meta.list <- meta_analyze_obs(p.vec=c(scott.p,gera.p),z.vec=c(scott.z,gera.z),
+                     neff.vec=c(scott.neff,gera.neff))
+    meta.z <- meta.list[[1]]; meta.p <- meta.list[[2]]
     build.df <- data.frame(gene,gene_name,scott.z,scott.p,
                            scottadj.z,scottadj.p,gera.z,gera.p,
-                           fi.z,fi.p,fg.z,fg.p,stringsAsFactors = FALSE)
+                           fi.z,fi.p,fg.z,fg.p,meta.z,meta.p,stringsAsFactors = FALSE)
     out.df <- rbind(out.df,build.df)
   }
   return(out.df)
