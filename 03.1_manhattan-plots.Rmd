@@ -17,16 +17,18 @@ knitr::opts_chunk$set(echo = TRUE)
 
 library("data.table")
 library("tidyverse")
-#library("ggbio")
-#library("viridis")
 library("grid")
 library("gridExtra")
 library("ggplot2")
+library("cowplot")
+library("ggrepel")
+
 
 local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
 rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 assoc.df <- fread(df.dir %&% "association_results.txt")
+islet.df <- fread(df.dir %&% "islet_association.txt")
 
 loci.df <- fread(df.dir %&% "gwas_windows.txt")
 
@@ -120,6 +122,7 @@ manhat <- function(dataframe, title=NULL, max.y="max", suggestiveline=0, genomew
 	}	else {
 		stop("Make sure your data frame contains columns CHR, BP, and P")
 	}
+  return(list(plot,d))
 }
 
 
@@ -135,8 +138,10 @@ Bonferroni Significant data frames
 
 get_manhat <- function(gwas.name,tiss.abrev,pred.perf.q=0.05,
                        col1,col2,cap=0,by=1){
-  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom","gene.start","gene.end"),
-                          matches(tiss.abrev%&%"."%&%gwas.name%&%"\\.")) %>% as.data.frame(.)
+  sub.df <- dplyr::select(assoc.df,one_of("gene","gene_name","chrom",
+                                          "gene.start","gene.end"),
+                          matches(tiss.abrev%&%"."%&%gwas.name%&%"\\.")) %>%
+    as.data.frame(.)
 
   if (tiss.abrev!="multi"){
     # Filter out NA's and genes with ppq > 0.05
@@ -165,19 +170,67 @@ get_manhat <- function(gwas.name,tiss.abrev,pred.perf.q=0.05,
   }
   names(sub.df)[names(sub.df)=="chrom"] <- "CHR"
   names(sub.df)[names(sub.df)=="gene.start"] <- "BP"
-  manhat(dataframe = sub.df,col1=col1,col2=col2,
+  
+  plot.df <- sub.df %>% dplyr::select(one_of("CHR","BP","P"))
+  plt.list <- manhat(dataframe = sub.df,col1=col1,col2=col2,
          genomewideline=-log10(bonfer),CAP=cap,BY=by)
+  df <- plt.list[[2]]
+  pb <- txtProgressBar(min=0,max=dim(df)[1],style=3)
+  df$gene_name <- map(1:dim(df)[1],function(i){
+    setTxtProgressBar(pb,i)
+    row.df <- df[i,]
+    filter(sub.df,CHR==row.df$CHR,BP==row.df$BP)$gene_name
+  }) %>% as.character(.)
+  close(pb)
+  plt.list[[1]] + geom_text_repel(data=filter(df,P<=bonfer),
+                     aes(x=pos,y=logp,label=gene_name),size=2)
+}
+
+get_manhat_islet <- function(gwas.name,col1,col2,cap=0,by=1){
+  sub.df <- dplyr::select(islet.df,one_of("gene","gene_name","chrom",
+                                          "gene.start","gene.end"),
+                          matches(gwas.name%&%"\\.")) %>%
+    as.data.frame(.)
+
+  bonfer <- 0.05 / dim(sub.df)[1]
+  # keep bonferonni associations 
+  index <- which(names(sub.df)==gwas.name%&%".p") 
+  keep.vec <- sub.df[,index] <= 1
+  keep.vec[is.na(keep.vec)] <- FALSE
+  sub.df <- sub.df[keep.vec,]
+
+  names(sub.df)[names(sub.df)=="chrom"] <- "CHR"
+  names(sub.df)[names(sub.df)=="gene.start"] <- "BP"
+  names(sub.df)[7] <- "P"
+  plot.df <- sub.df %>% dplyr::select(one_of("CHR","BP","P"))
+  plt.list <- manhat(dataframe = sub.df,col1=col1,col2=col2,
+         genomewideline=-log10(bonfer),CAP=cap,BY=by)
+  df <- plt.list[[2]]
+  pb<-txtProgressBar(min=0,max=dim(df)[1],style=3)
+  df$gene_name <- map(1:dim(df)[1],function(i){
+    setTxtProgressBar(pb,i)
+    row.df <- df[i,]
+    filter(sub.df,CHR==row.df$CHR,BP==row.df$BP)$gene_name
+  }) %>% as.character(.)
+  close(pb)
+  
+  plt.list[[1]] + geom_text_repel(data=filter(df,P<=bonfer),
+                     aes(x=pos,y=logp,label=gene_name),size=2)
 }
 
 save_manhat_plots <- function(gwas.name){
   plt.multi <- get_manhat(gwas.name,"multi",col1="dodgerblue4",col2="dodgerblue1",by=2)
+  plt.isl <- get_manhat_islet(gwas.name,col1="slategray4",col2="slategray3")
   plt.panc <- get_manhat(gwas.name,"panc",col1="chartreuse4",col2="chartreuse3")
   plt.mus <- get_manhat(gwas.name,"mus",col1="coral3",col2="coral4")
   plt.liv <- get_manhat(gwas.name,"liv",col1="rosybrown4",col2="rosybrown3")
   plt.adi <- get_manhat(gwas.name,"adi",col1="goldenrod1",col2="goldenrod3")
   plt <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.multi,ncol=1)
+  plt2 <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.isl,plt.multi,ncol=1)
   ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks.png",plt,
-         width=12,height=15)
+        width=14,height=15)
+  ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks_full.png",plt2,
+        width=14,height=15)
 }
 
 
