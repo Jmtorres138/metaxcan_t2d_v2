@@ -16,13 +16,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library("data.table")
 library("tidyverse")
 
-server.dir <- "/home/jason/science/servers/FUSE5/"
-local.dir <- "/home/jason/science/projects/metaxcan_t2d_v2/" 
+#server.dir <- "/home/jason/science/servers/FUSE5/"
+server.dir <- "/Users/jtorres/FUSE5/"
+#local.dir <- "/home/jason/science/projects/metaxcan_t2d_v2/" 
 #/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
 rescomp.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
-assoc.df <- fread(df.dir %&% "association_results.txt")
-names(assoc.df)
+
 
 ```
 
@@ -93,11 +93,75 @@ build_islet_assoc_df <- function(full.df){
 ```
 
 
+
+
+# Append gene chromosome, start, and end position 
+
+```{r}
+
+library("GenomicRanges")
+library("GenomicFeatures")
+library("org.Hs.eg.db")
+library("annotate")
+library("Homo.sapiens")
+
+append_chrom_info <- function(assoc.df){
+  ensids <- unique(assoc.df$gene)
+  ens.vec <- map(ensids,function(e){strsplit(e,".",fixed=TRUE)[[1]][1]}) %>% 
+    as.character(.)
+    
+  ens.df <- select(Homo.sapiens,key=ens.vec,keytype="ENSEMBL",
+                                    columns=c("TXCHROM","TXSTRAND","TXSTART","TXEND","SYMBOL"))
+  assoc.df$ENSEMBL <- map(assoc.df$gene,function(s){strsplit(s,".",fixed=TRUE)[[1]][1]}) %>% 
+  as.character(.)
+  chrom.vec <- c("chr" %&% 1:22)
+  pb <- txtProgressBar(min=0,max=length(assoc.df$ENSEMBL),style=3)
+  chrom <- map(1:length(assoc.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- assoc.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      unique(sub$TXCHROM) %>% gsub("chr","",.)
+  }) %>% as.character(.) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(assoc.df$ENSEMBL),style=3)
+  gene.start <- map(1:length(assoc.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- assoc.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      min(sub$TXSTART)
+  }) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(assoc.df$ENSEMBL),style=3)
+  gene.end <- map(1:length(assoc.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- assoc.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      max(sub$TXEND)
+  }) %>% as.integer(.)
+  pb <- txtProgressBar(min=0,max=length(assoc.df$ENSEMBL),style=3)
+  gene_name <- map(1:length(assoc.df$ENSEMBL),function(i){
+      setTxtProgressBar(pb,i)
+      ensid <- assoc.df$ENSEMBL[i]
+      sub <- filter(ens.df,ENSEMBL==ensid,TXCHROM %in% chrom.vec)
+      sub$SYMBOL[1]
+  }) %>% as.character(.)
+  
+  assoc.df$chrom <- chrom; assoc.df$gene.start <- gene.start
+  assoc.df$gene.end <- gene.end; assoc.df$gene_name <- gene_name
+  return(assoc.df)
+}
+
+```
+
 ```{r}
 
 islet.assoc.df <- build_islet_assoc_df(full.df)
-write.table(islet.assoc.df, df.dir %&% "islet_association.txt",sep="\t",
-            quote=F,row.names=F)
+islet.assoc.df <- append_chrom_info(islet.assoc.df)
 
 ```
+
+
+```{r}
+write.table(islet.assoc.df, df.dir %&% "islet_association.txt",sep="\t",
+            quote=F,row.names=F)
+```
+
 
