@@ -1,0 +1,56 @@
+---
+title: "manuscript_results"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+server.dir <- "/home/jason/science/servers/FUSE5/"
+work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
+dat.dir <- work.dir %&% "data_frames/"
+
+```
+
+
+# Tissue-wide association analyses - Genome-wide significance 
+
+## Significant associations and genes 
+
+```{r}
+
+scott.sig.df <- fread(dat.dir %&% "Scott_T2D_gws-significant.txt")
+
+scott.sig.islet <- fread(dat.dir %&% "Scott_T2D_gws-significant_Islet.txt")
+# ENSG00000206120.7 has NA for gene, manually looking up, it a pseudogene, EGFEM1P chr3, 167967729,168539123, index is 13 in data frame
+scott.sig.islet$gene_name[13] <- "EGFEM1P"; scott.sig.islet$gene.start[13] <- 167967729 ; scott.sig.islet$gene.end[13] <- 168539123;
+scott.sig.islet$chrom[13] <- "chr3"
+
+table(scott.sig.df$tissue)
+isl.genes <- scott.sig.islet$gene_name
+adi.genes <- filter(scott.sig.df,tissue=="Adipose-subcutaneous")$gene_name
+mus.genes <- filter(scott.sig.df,tissue=="Muscle-skeletal")$gene_name
+liv.genes <- filter(scott.sig.df,tissue=="Liver")$gene_name
+panc.genes <- filter(scott.sig.df,tissue=="Pancreas")$gene_name
+tx.genes <- filter(scott.sig.df,tissue=="cross-tissue")$gene_name
+
+adi.genes %in% tx.genes %>% sum(.)
+mus.genes %in% tx.genes %>% sum(.)
+liv.genes %in% tx.genes %>% sum(.)
+panc.genes %in% tx.genes %>% sum(.)
+
+isl.genes %in% tx.genes %>% sum(.)
+
+
+```
+
