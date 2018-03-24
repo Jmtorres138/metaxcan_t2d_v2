@@ -16,7 +16,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library("data.table")
 library("tidyverse")
 
-server.dir <- "/home/jason/science/servers/FUSE5/"
+server.dir <- "/home/jason/science/servers/FUSE5/" 
+server.dir <- "/Users/jtorres/FUSE5/"
 work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
 dat.dir <- work.dir %&% "data_frames/"
 
@@ -27,9 +28,12 @@ dat.dir <- work.dir %&% "data_frames/"
 
 ## Significant associations and genes 
 
+
+T2D: Scott (no BMI adjustment)
+
 ```{r}
 
-scott.sig.df <- fread(dat.dir %&% "Scott_T2D_gws-significant.txt")
+scott.sig.df <- fread(dat.dir %&% "Scott_T2D_gws-significant.full.txt")
 
 scott.sig.islet <- fread(dat.dir %&% "Scott_T2D_gws-significant_Islet.txt")
 # ENSG00000206120.7 has NA for gene, manually looking up, it a pseudogene, EGFEM1P chr3, 167967729,168539123, index is 13 in data frame
@@ -48,9 +52,58 @@ adi.genes %in% tx.genes %>% sum(.)
 mus.genes %in% tx.genes %>% sum(.)
 liv.genes %in% tx.genes %>% sum(.)
 panc.genes %in% tx.genes %>% sum(.)
-
 isl.genes %in% tx.genes %>% sum(.)
+
+tx.genes[tx.genes %in% isl.genes[!(isl.genes %in% panc.genes)]]
+# "IGF2BP2" "PLEKHA1" "TH"      "ADCY5"   "DGKB" 
+
+scott.gtex.genes <- scott.sig.df$gene_name %>% unique(.)
+scott.islet.genes <- scott.sig.islet$gene_name %>% unique(.) 
+scott.gtex.genes %>% length(.)
+scott.islet.genes %>% length(.)
+scott.gtex.genes[scott.gtex.genes %in% scott.islet.genes]
+
+c(scott.gtex.genes,scott.islet.genes) %>% unique(.) %>% length(.)
+
+# Replicated genes 
+
+filter(scott.sig.df)$gene_name %>% unique(.) %>% length(.)
+filter(scott.sig.df,total.replicated==TRUE)$gene_name %>% unique(.) %>% length(.)
+#"JAZF1"   "WFS1"    "PLEKHA1" "SOX4"    "ZZEF1"   "ATP5G1"  "CYP26C1" "NRAP"    "IRS1"    "ZDHHC6"  "THADA"  
+#[12] "TCF7L2"  "IGF2BP2" "ID4"     "NHLRC2"  "GPAM"    "DGKB"
+17/41
+
+filter(scott.sig.islet)$gene_name %>% unique(.) %>% length(.)
+filter(scott.sig.islet,replicated==TRUE)$gene_name %>% unique(.) %>% length(.)
+12/17
+
+```
+
+
+### BMI-adjusted 
+
+```{r}
+
+scottadj.sig.df <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant.full.txt")
+scottadj.sig.islet <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant_Islet.txt")
+scottadj.gtex.genes <- scottadj.sig.df$gene_name %>% unique(.)
+scottadj.islet.genes <- scottadj.sig.islet$gene_name %>% unique(.)
+scottadj.gtex.genes %>% length(.)
+scottadj.islet.genes %>% length(.)
+c(scottadj.gtex.genes,scottadj.islet.genes) %>% unique(.) %>% length(.)
+scott.gtex.genes[!(scott.gtex.genes %in% scottadj.gtex.genes)]
+```
+
+
+## Profile genes for known status 
+
+
+```{r}
+
 
 
 ```
+
+
+
 
