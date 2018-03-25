@@ -1,0 +1,70 @@
+---
+title: "Untitled"
+author: "Jason Torres"
+date: "February 14, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+enh.df <- fread(df.dir %&% "varshney2016-strong-enhancers-s9.txt")
+
+#model-snps_Scott_T2D_lws-significant.full.txt
+#model-snps_Scott_T2D_gws-significant.full.txt
+
+```
+
+
+```{r}
+
+library("GenomicRanges")
+
+build_profile_df <- function(sig="gws"){
+  mod.df <- fread(df.dir %&% "model-snps_Scott_T2D_"%&%sig%&%"-significant.full.txt")
+  res.df <- fread(df.dir %&% "Scott_T2D_"%&%sig%&%"-significant.full.txt")
+  tiss.vec <- unique(enh.df$tissue)
+  pb <- txtProgressBar(min=0,max=1,style=3)
+  for (i in 1:dim(res.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- res.df[i,]
+    ensid <- row.df$gene; gene <- row.df$gene_name
+    bt <- row.df$best.tissue; t <- row.df$tissue
+    tissue <- ifelse(is.na(bt),t,bt)
+    tissue <- ifelse(tissue=="Adipose-subcutaneous","Adipose_Subcutaneous",tissue)
+    tissue <- ifelse(tissue=="Muscle-skeletal","Muscle_Skeletal",tissue)
+    w.df <- filter(mod.df,GENE==ensid,Tissue==tissue)
+    w.gr <- GRanges(seqnames=w.df$CHR,IRanges(start=w.df$POS,end=w.df$POS))
+    ssw <- (w.df$weight^2) %>% sum(.)
+    vec <- c() 
+    for (tiss in tiss.vec){
+      sub <- filter(enh.df,tissue==tiss)
+      sub.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$start,end=sub$end))
+      inter <- w.gr %over% sub.gr
+      inter.df <- w.df[inter,]
+      inter.ssw <- (inter.df$weight^2) %>% sum(.)
+      ratio <- inter.ssw/ssw
+      vec <- append(vec,ratio)
+    }
+    
+  }
+}
+
+```
+
+
+
+
+
+
+
