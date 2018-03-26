@@ -22,7 +22,7 @@ library("gridExtra")
 library("viridis")
 
 server.dir <- "/home/jason/science/servers/FUSE5/" 
-server.dir <- "/Users/jtorres/FUSE5/"
+#server.dir <- "/Users/jtorres/FUSE5/"
 work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
 dat.dir <- work.dir %&% "data_frames/"
 
@@ -158,6 +158,56 @@ build_table_df <- function(t2d.df,isl.df){
   return(out.df)
 }
 
+
+append_bmiadj_info <- function(table.df,sig.gtex,sig.isl){
+  df <- c()
+  pb <- txtProgressBar(min=0,max=dim(table.df)[1],style=3)
+  for (i in 1:dim(table.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- table.df[i,]
+    g <- row.df$gene
+    t <- row.df$tissue
+    if(t=="Muscle-Skeletal"){
+      sub.df <- filter(assoc.df,gene==g) %>% 
+        dplyr::select(.,one_of("mus.scottadj.z","mus.scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.gtex,gene==g,tissue=="Muscle-skeletal"))[1]>0
+    } else if(t=="TissueXcan (GTEx)"){
+      sub.df <- filter(assoc.df,gene==g) %>% 
+        dplyr::select(.,one_of("multi.scottadj.z","multi.scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.gtex,gene==g,tissue=="cross-tissue"))[1]>0
+    } else if(t=="Adipose-Subcutaneous"){
+      sub.df <- filter(assoc.df,gene==g) %>% 
+        dplyr::select(.,one_of("adi.scottadj.z","adi.scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.gtex,gene==g,tissue=="Adipose-subcutaneous"))[1]>0
+    } else if(t=="Pancreas"){
+      sub.df <- filter(assoc.df,gene==g) %>% 
+        dplyr::select(.,one_of("panc.scottadj.z","panc.scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.gtex,gene==g,tissue=="Pancreas"))[1]>0
+    } else if(t=="Liver"){
+      sub.df <- filter(assoc.df,gene==g) %>% 
+        dplyr::select(.,one_of("liv.scottadj.z","liv.scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.gtex,gene==g,tissue=="Liver"))[1]>0
+    } else if(t=="Islets" ){
+      sub.df <- filter(islet.df,gene==g) %>% 
+        dplyr::select(.,one_of("scottadj.z","scottadj.p"))
+      bmiadj.sig <- dim(filter(sig.isl,gene==g,tissue=="islet"))[1]>0
+    } else{
+      print("Error: Please inspect")
+    }
+    sub.df <- cbind(sub.df,bmiadj.sig)
+    names(sub.df) <- c("adj.z","adj.p","adj.sig")
+    df <- rbind(df,sub.df)
+  }
+  close(pb)
+  out.df <- cbind(table.df,df)
+  out.df$adj.z <- prettyNum(out.df$adj.z,digits=3) 
+  out.df$adj.p <- prettyNum(out.df$adj.p,digits=3) 
+
+  return(out.df)
+}
+
+
+
 append_magic_info <- function(table.df,fg.gtex,fi.gtex,fg.isl,fi.isl){
   df <- c()
   pb <- txtProgressBar(min=0,max=dim(table.df)[1],style=3)
@@ -240,20 +290,24 @@ plot_table <- function(table.df,outname,start,stop,rep=FALSE,lws=FALSE){
   }
   plot.df <- dplyr::select(table.df,
            -one_of("gene.start","gene.end",
-                   "total.replicated","gene.type","fg.sig","fi.sig"))
+                   "total.replicated","gene.type","fg.sig","fi.sig","locus","adj.sig"))
+  plot.df <- dplyr::select(plot.df,one_of("gene","gene_name","chrom","tissue","best.tissue",
+                                          "z","p","adj.z","adj.p","gera.z","gera.p","meta.z",
+                                          "meta.p","fg.z","fg.p","fi.z","fi.p"))
   if(lws==TRUE){
-  names(plot.df) <- c("Ensembl","Symbol","Chr","Tissue","Top Tissue\n(TissueXcan)",
-                      "Z-score","P-value","Z-score\n(GERA)","P-value\n(GERA)",
-                      "Z-score\n(meta-analysis)","P-value\n(meta-analysis)",
-                      "Z-score\n(Fasting Glucose)","P-value\n(Fasting Glucose)",
-                      "Z-score\n(Fasting Insulin)","P-value\n(Fasting Insulin)",
-                      "Region")    
+    plot.df$locus <- table.df$locus
+    names(plot.df) <- c("Ensembl","Symbol","Chr","Tissue","Top Tissue\n(TissueXcan)",
+                        "Z-score","P-value","Z-score\n(BMI adj.)","P-value\n(BMI adj.)","Z-score\n(GERA)","P-value\n(GERA)",
+                        "Z-score\n(Meta-analysis)","P-value\n(Meta-analysis)",
+                        "Z-score\n(FG)","P-value\n(FG)",
+                        "Z-score\n(FI)","P-value\n(FI)",
+                        "Region")    
   } else{
-  names(plot.df) <- c("Ensembl","Symbol","Chr","Tissue","Top Tissue\n(TissueXcan)",
-                      "Z-score","P-value","Z-score\n(GERA)","P-value\n(GERA)",
-                      "Z-score\n(meta-analysis)","P-value\n(meta-analysis)",
-                      "Z-score\n(Fasting Glucose)","P-value\n(Fasting Glucose)",
-                      "Z-score\n(Fasting Insulin)","P-value\n(Fasting Insulin)")    
+    names(plot.df) <- c("Ensembl","Symbol","Chr","Tissue","Top Tissue\n(TissueXcan)",
+                        "Z-score","P-value","Z-score\n(BMI adj.)","P-value\n(BMI adj.)","Z-score\n(GERA)","P-value\n(GERA)",
+                        "Z-score\n(Meta-analysis)","P-value\n(Meta-analysis)",
+                        "Z-score\n(FG)","P-value\n(FG)",
+                        "Z-score\n(FI)","P-value\n(FI)")    
   }
   mytheme <- gridExtra::ttheme_default(
     core = list(fg_params=list(cex = 0.7),
@@ -265,6 +319,7 @@ plot_table <- function(table.df,outname,start,stop,rep=FALSE,lws=FALSE){
   
   if(rep==FALSE){
     plot.df <- plot.df[start:stop,]
+    table.df <- table.df[start:stop]
   }
   tabgrob <- tableGrob(plot.df,
                       theme=mytheme) 
@@ -273,53 +328,36 @@ plot_table <- function(table.df,outname,start,stop,rep=FALSE,lws=FALSE){
                  gp=gpar(fontface="italic")) 
   vec <- c(1:dim(plot.df)[1])[table.df$total.replicated]
  
-  rep.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="reported"]
-  reg.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="t2d.region"]
-  nov.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="novel.locus"]
-  fg.vec <- c(1:dim(table.df)[1])[table.df$fg.sig]
-  fi.vec <- c(1:dim(table.df)[1])[table.df$fi.sig]
+  rep.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="reported"] %>% na.omit(.)
+  reg.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="t2d.region"] %>% na.omit(.)
+  nov.vec <- c(1:dim(table.df)[1])[table.df$gene.type=="novel.locus"] %>% na.omit(.)
+  fg.vec <- c(1:dim(table.df)[1])[table.df$fg.sig] %>% na.omit(.)
+  fi.vec <- c(1:dim(table.df)[1])[table.df$fi.sig] %>% na.omit(.)
+  adj.vec <- c(1:dim(table.df)[1])[table.df$adj.sig] %>% na.omit(.)
+  replic.vec <- c(1:dim(table.df)[1])[table.df$total.replicated] %>% na.omit(.)
 
-  if(rep==TRUE){
-    tabgrob <- edit_cell(tabgrob, row=fi.vec, col=c(1,2,4,14,15), "core-fg", 
-                   gp=gpar(fontface="bold"))    
-    tabgrob <- edit_cell(tabgrob, row=fg.vec, col=c(1,2,4,12,13), "core-fg", 
-                   gp=gpar(fontface="bold")) 
-    tabgrob <- edit_cell(tabgrob, row=fg.vec, col=2, "core-fg", 
-                   gp=gpar(fontface="bold.italic")) 
-    tabgrob <- edit_cell(tabgrob, row=fi.vec, col=2, "core-fg", 
-                   gp=gpar(fontface="bold.italic")) 
-    tabgrob <- edit_cell(tabgrob, row=rep.vec, col=c(1:dim(plot.df)[2]), "core-bg", 
-                   gp=gpar(fill=viridis(2)[1],alpha=0.5, 
-                           col =viridis(2)[1], lwd=1))  
-    tabgrob <- edit_cell(tabgrob, row=reg.vec, c(1:dim(plot.df)[2]), "core-bg", 
-                   gp=gpar(fill=viridis(2)[2],alpha=0.5, 
-                           col =viridis(2)[2], lwd=1))
-    tabgrob <- edit_cell(tabgrob, row=nov.vec, c(1:dim(plot.df)[2]), "core-bg", 
-                   gp=gpar(fill="grey",alpha=0.5, 
-                           col ="grey", lwd=1))    
-  } else{
-    tabgrob <- edit_cell(tabgrob, row=fi.vec, col=c(1,2,4,14,15), "core-fg", 
-                   gp=gpar(fontface="bold"))    
-    tabgrob <- edit_cell(tabgrob, row=fg.vec, col=c(1,2,4,12,13), "core-fg", 
-                   gp=gpar(fontface="bold")) 
-    tabgrob <- edit_cell(tabgrob, row=fg.vec, col=2, "core-fg", 
-                   gp=gpar(fontface="bold.italic")) 
-    tabgrob <- edit_cell(tabgrob, row=fi.vec, col=2, "core-fg", 
-                   gp=gpar(fontface="bold.italic"))
-    
-    tabgrob <- edit_cell(tabgrob, row=vec, col=c(8,9), "core-bg", 
-                   gp=gpar(fill="grey",alpha=0.5, 
-                           col = "grey", lwd=1)) 
-    tabgrob <- edit_cell(tabgrob, row=rep.vec, col=c(1:5), "core-bg", 
-                   gp=gpar(fill=viridis(2)[1],alpha=0.5, 
-                           col =viridis(2)[1], lwd=1))  
-    tabgrob <- edit_cell(tabgrob, row=reg.vec, col=c(1:5), "core-bg", 
-                   gp=gpar(fill=viridis(2)[2],alpha=0.5, 
-                           col =viridis(2)[2], lwd=1))
-    tabgrob <- edit_cell(tabgrob, row=nov.vec, col=c(1:5), "core-bg", 
-                   gp=gpar(fill="grey",alpha=0.5, 
-                           col ="grey", lwd=1))
-  }
+  tabgrob <- edit_cell(tabgrob, row=adj.vec, col=c(8,9), "core-fg", 
+                 gp=gpar(fontface="bold"))    
+  tabgrob <- edit_cell(tabgrob, row=replic.vec, col=c(10,11), "core-fg", 
+                 gp=gpar(fontface="bold")) 
+  tabgrob <- edit_cell(tabgrob, row=replic.vec, col=c(12,13), "core-fg", 
+                 gp=gpar(fontface="bold")) 
+  tabgrob <- edit_cell(tabgrob, row=replic.vec, col=2, "core-fg", 
+                 gp=gpar(fontface="bold.italic")) 
+  tabgrob <- edit_cell(tabgrob, row=fg.vec, col=c(14,15), "core-fg", 
+                 gp=gpar(fontface="bold")) 
+  tabgrob <- edit_cell(tabgrob, row=fi.vec, col=c(16,17), "core-fg", 
+                 gp=gpar(fontface="bold")) 
+  
+  tabgrob <- edit_cell(tabgrob, row=rep.vec, col=c(1:dim(plot.df)[2]), "core-bg", 
+                 gp=gpar(fill=viridis(2)[1],alpha=0.5, 
+                         col =viridis(2)[1], lwd=1))  
+  tabgrob <- edit_cell(tabgrob, row=reg.vec, c(1:dim(plot.df)[2]), "core-bg", 
+                 gp=gpar(fill=viridis(2)[2],alpha=0.5, 
+                         col =viridis(2)[2], lwd=1))
+  tabgrob <- edit_cell(tabgrob, row=nov.vec, c(1:dim(plot.df)[2]), "core-bg", 
+                 gp=gpar(fill="grey",alpha=0.5, 
+                         col ="grey", lwd=1))   
   ggsave(tabgrob,file=outname,
          height=20,width=20)
 }
@@ -340,6 +378,10 @@ scott.islet$chrom[13] <- 3
 names(scott.islet)[names(scott.islet)=="scott.z"] <- "z"
 names(scott.islet)[names(scott.islet)=="scott.p"] <- "p"
 
+adj.df <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant.txt") 
+adj.islet <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant_Islet.txt") 
+
+
 fg.sig.gtex <- fread(dat.dir %&% "Magic_FG_gws-significant.txt")
 fi.sig.gtex <- fread(dat.dir %&% "Magic_FI_gws-significant.txt")
 fg.sig.isl <- fread(dat.dir %&% "Magic_FG_gws-significant_Islet.txt")
@@ -347,9 +389,10 @@ fg.sig.isl$tissue <- "islet"
 fi.sig.isl <- fread(dat.dir %&% "Magic_FI_gws-significant_Islet.txt")
 fi.sig.isl$tissue <- "islet"
 
-table.df <- build_table_df(scott.df,scott.islet)
-table.df <- append_magic_info(table.df,fg.sig.gtex,data.frame(),
+table.df <- build_table_df(scott.df,scott.islet) %>% append_bmiadj_info(.,adj.df,adj.islet) %>% 
+  append_magic_info(.,fg.sig.gtex,data.frame(),
                               fg.sig.isl,data.frame())
+
 
 write.table(x=table.df,file=dat.dir%&%"result-table_ScottT2D_gws.txt",
             sep="\t",quote=FALSE,row.names=FALSE)
@@ -373,17 +416,28 @@ scott.islet <- fread(dat.dir %&% "Scott_T2D_lws-significant_Islet.txt")
 fg.sig.gtex <- fread(dat.dir %&% "Magic_FG_lws-significant.txt")
 fi.sig.gtex <- fread(dat.dir %&% "Magic_FI_lws-significant.txt")
 fg.sig.isl <- fread(dat.dir %&% "Magic_FG_lws-significant_Islet.txt")
+fg.sig.isl$tissue <- "islet"
 fi.sig.isl <- fread(dat.dir %&% "Magic_FI_lws-significant_Islet.txt")
+fi.sig.isl$tissue <- "islet"
 
 names(scott.islet)[names(scott.islet)=="scott.z"] <- "z"
 names(scott.islet)[names(scott.islet)=="scott.p"] <- "p"
 
-table.df <- build_table_df(scott.df,scott.islet) # 166 rows total 
-table.df <- append_magic_info(table.df,fg.sig.gtex,fi.sig.gtex,
+adj.df <- fread(dat.dir %&% "Scott_T2D_BMIadj_lws-significant.txt") 
+adj.islet <- fread(dat.dir %&% "Scott_T2D_BMIadj_lws-significant_Islet.txt") 
+adj.islet$tissue <- "islet"
+
+
+table.df <-  build_table_df(scott.df,scott.islet) %>% append_bmiadj_info(.,adj.df,adj.islet) %>% 
+  append_magic_info(.,fg.sig.gtex,fi.sig.gtex,
                               fg.sig.isl,fi.sig.isl)
+
+# 166 rows total 
+
 
 write.table(x=table.df,file=dat.dir%&%"result-table_ScottT2D_lws.txt",
             sep="\t",quote=FALSE,row.names=FALSE)
+
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_replicated.png",
            start=1,stop=dim(table.df)[1],rep=TRUE,lws=TRUE)
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part1.png",
@@ -395,6 +449,10 @@ plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part3.png",
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part4.png",
            start=121,stop=166,rep=FALSE,lws=TRUE)
 ```
+ 
+
+
+
 
 
 
