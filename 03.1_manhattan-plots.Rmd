@@ -20,12 +20,12 @@ library("tidyverse")
 library("grid")
 library("gridExtra")
 library("ggplot2")
-library("cowplot")
+#library("cowplot")
 library("ggrepel")
 
 
-local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
-rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+local.dir <- "/home/jason/science/projects/metaxcan_t2d_v2/" #/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
+rescomp.dir <- "/home/jason/science/servers/FUSE5/projects/metaxcan_t2d_v2/" #"/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 assoc.df <- fread(df.dir %&% "association_results.txt")
 islet.df <- fread(df.dir %&% "islet_association.txt")
@@ -41,7 +41,42 @@ tiss.df <- data.frame(abrev=tiss.names,
 
 plot.dir <- rescomp.dir %&% "plots/"
 
+
+
+
 ```
+
+Prepare GWAS data frame 
+
+```{r}
+
+
+build_gwas_df <- function(){
+  gwas.df <- fread(df.dir %&% "DIAGRAM_T2D_SCOTT.ma")
+  names(gwas.df)[names(gwas.df)=="p"] <- "P"
+  names(gwas.df)[names(gwas.df)=="SNP"] <- "RSID"
+  snp.df <- fread("cat " %&% df.dir %&% "snp_keyfile.txt.gz" %&% " | zmore")
+  
+  out.df <- c()
+  pb <- txtProgressBar(min=0,max=dim(gwas.df)[1],style=3)
+  for (i in 1:dim(gwas.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- gwas.df[i,]
+    sub.df <- filter(snp.df,RSID==row.df$RSID)
+    if(dim(sub.df)[1]==0){
+      sub.df <- data.frame(CHR=NA,POS=NA)
+    }
+    build.df <- cbind(row.df,sub.df) #inner_join(row.df,sub.df,by="RSID") %>% suppressMessages(.)
+    out.df <- rbind(out.df,build.df)
+  }  
+  close(pb)
+  return(out.df)
+}
+
+#gwas.df <- build_gwas_df() # Computationally intensive - run on Rescomp 
+
+```
+
 
 
 
@@ -123,6 +158,19 @@ manhat <- function(dataframe, title=NULL, max.y="max", suggestiveline=0, genomew
 		stop("Make sure your data frame contains columns CHR, BP, and P")
 	}
   return(list(plot,d))
+}
+
+
+```
+
+
+
+GWAS Manhattan plot 
+
+```{r}
+
+gwas_manhat <- function(gwas.df){
+  
 }
 
 
