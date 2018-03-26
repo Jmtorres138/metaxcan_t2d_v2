@@ -319,7 +319,7 @@ plot_table <- function(table.df,outname,start,stop,rep=FALSE,lws=FALSE){
   
   if(rep==FALSE){
     plot.df <- plot.df[start:stop,]
-    table.df <- table.df[start:stop]
+    table.df <- table.df[start:stop,]
   }
   tabgrob <- tableGrob(plot.df,
                       theme=mytheme) 
