@@ -41,42 +41,15 @@ tiss.df <- data.frame(abrev=tiss.names,
 
 plot.dir <- rescomp.dir %&% "plots/"
 
+win.df <- fread(df.dir %&% "gwas_windows.txt")
 
-
-
-```
-
-Prepare GWAS data frame 
-
-```{r}
-
-
-build_gwas_df <- function(){
-  gwas.df <- fread(df.dir %&% "DIAGRAM_T2D_SCOTT.ma")
-  names(gwas.df)[names(gwas.df)=="p"] <- "P"
-  names(gwas.df)[names(gwas.df)=="SNP"] <- "RSID"
-  snp.df <- fread("cat " %&% df.dir %&% "snp_keyfile.txt.gz" %&% " | zmore")
-  
-  out.df <- c()
-  pb <- txtProgressBar(min=0,max=dim(gwas.df)[1],style=3)
-  for (i in 1:dim(gwas.df)[1]){
-    setTxtProgressBar(pb,i)
-    row.df <- gwas.df[i,]
-    sub.df <- filter(snp.df,RSID==row.df$RSID)
-    if(dim(sub.df)[1]==0){
-      sub.df <- data.frame(CHR=NA,POS=NA)
-    }
-    build.df <- cbind(row.df,sub.df) #inner_join(row.df,sub.df,by="RSID") %>% suppressMessages(.)
-    out.df <- rbind(out.df,build.df)
-  }  
-  close(pb)
-  return(out.df)
-}
-
-#gwas.df <- build_gwas_df() # Computationally intensive - run on Rescomp 
+gwas.df <- fread("cat " %&% df.dir %&% "Scott_T2D_DIAGRAM-full.txt.gz"%&% " | zmore")
+chrom.vec <- 1:23 %>% as.character(.)
+gwas.df <- filter(gwas.df, CHR %in% chrom.vec)
+gwas.df$CHR <- as.integer(gwas.df$CHR)
+names(gwas.df)[names(gwas.df)=="POS"] <- "BP"
 
 ```
-
 
 
 
@@ -169,10 +142,31 @@ GWAS Manhattan plot
 
 ```{r}
 
-gwas_manhat <- function(gwas.df){
-  
+map_windows <- function(win.df,manhat.df){
+  out.df <- c()
+  for (i in unique(win.df$locus.id)){
+    winsub <- filter(win.df,locus.id==i)
+    sub.df <- filter(manhat.df,CHR==winsub$chrom,BP>=winsub$loc.start,BP<=winsub$loc.end)
+    build.df <- data.frame(winsub$chrom,min(sub.df$pos),max(sub.df$pos),i)
+    names(build.df) <- c("CHR","start","end","Region")
+    out.df <- rbind(out.df,build.df)
+  }
+  return(out.df)
 }
 
+
+
+gwas_manhat <- function(gwas.df){
+  #samp.df <- gwas.df[sample(1:dim(gwas.df)[1],100000),]
+  l <- manhat(gwas.df,col1="ivory4",col2="ivory3")
+  manhat.df <- l[[2]]
+  map.df <- map_windows(win.df,manhat.df)
+  map.df$y <- sample(seq(0.2,0.8,0.1),dim(map.df)[1],replace=TRUE)
+  l[[1]] + geom_segment(data=map.df,aes(x=start,xend=end),y=-1,yend=0,
+                        color="black") +
+    geom_text(data=map.df,aes(x=(start+end)/2,label=Region,y=y),
+                    color="black",size=1.5,segment.alpha = 0.4,segment.size=0.2)
+}
 
 ```
 
@@ -273,12 +267,13 @@ save_manhat_plots <- function(gwas.name){
   plt.mus <- get_manhat(gwas.name,"mus",col1="coral3",col2="coral4")
   plt.liv <- get_manhat(gwas.name,"liv",col1="rosybrown4",col2="rosybrown3")
   plt.adi <- get_manhat(gwas.name,"adi",col1="goldenrod1",col2="goldenrod3")
-  plt <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.multi,ncol=1)
-  plt2 <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.isl,plt.multi,ncol=1)
-  ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks.png",plt,
-        width=14,height=15)
-  ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks_full.png",plt2,
-        width=14,height=15)
+  plt.gwas <- gwas_manhat(gwas.df)
+  plt <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.multi,plt.gwas,ncol=1)
+  plt2 <- arrangeGrob(plt.adi,plt.mus,plt.liv,plt.panc,plt.isl,plt.multi,plt.gwas,ncol=1)
+  ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks_withGWAS.png",plt,
+        width=14,height=18)
+  ggplot2::ggsave(filename=plot.dir%&%gwas.name%&%".manhattan-tracks_full_withGWAS.png",plt2,
+        width=14,height=18)
 }
 
 
