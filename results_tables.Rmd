@@ -441,13 +441,14 @@ write.table(x=table.df,file=dat.dir%&%"result-table_ScottT2D_lws.txt",
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_replicated.png",
            start=1,stop=dim(table.df)[1],rep=TRUE,lws=TRUE)
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part1.png",
-           start=1,stop=40,rep=FALSE,lws=TRUE)
+           start=1,stop=45,rep=FALSE,lws=TRUE)
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part2.png",
-           start=41,stop=80,rep=FALSE,lws=TRUE)
+           start=46,stop=90,rep=FALSE,lws=TRUE)
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part3.png",
-           start=81,stop=120,rep=FALSE,lws=TRUE)
+           start=91,stop=136,rep=FALSE,lws=TRUE)
 plot_table(table.df,plot.dir%&%"result-table_ScottT2D_lws_full_part4.png",
-           start=121,stop=166,rep=FALSE,lws=TRUE)
+           start=137,stop=181,rep=FALSE,lws=TRUE)
+
 ```
  
 
