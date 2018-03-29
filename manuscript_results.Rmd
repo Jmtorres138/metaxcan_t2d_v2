@@ -148,7 +148,7 @@ sub.df <- filter(gws.df,tissue!="TissueXcan (GTEx)",!(gene_name%in%txn.genes)) %
 sub.df <- sub.df[!duplicated(sub.df$gene_name),]
 sub.df$gene.type %>% table(.)
 #novel.locus    reported  t2d.region 
- #        12           7           3 
+ #        13           7           3 
 ```
 
 
@@ -177,24 +177,36 @@ novel.genes <- filter(sub.df,gene.type=="novel.locus")$gene_name
 
 # how many of these novel genes are within 1Mb of gwas associations 
 
-reg.gr <- GRanges(seqnames=region.df$chrom,IRanges(start=region.df$loc.start,end=region.df$loc.end))
-expand.gr <- reg.gr + 500000
-oneMb.vec <- map(novel.genes,function(g){
-  sub <- filter(assoc.df,gene_name==g)
-  if (g == "EGFEM1P"){
-    g.gr <- GRanges(seqnames=3,IRanges(start=167967729,end=168539123))
-  } else{
-    g.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$gene.start,end=sub$gene.end))
-  }
-  eval <- g.gr %over% expand.gr
-  if(eval==TRUE){
-    print(findOverlaps(expand.gr,g.gr))
-  }
-  return(eval)
-}) %>% as.logical(.) 
+#reg.gr <- GRanges(seqnames=region.df$chrom,IRanges(start=region.df$loc.start,end=region.df$loc.end))
+#expand.gr <- reg.gr + 1e6
+#oneMb.vec <- map(novel.genes,function(g){
+#  sub <- filter(assoc.df,gene_name==g)
+#  if (g == "EGFEM1P"){
+#    g.gr <- GRanges(seqnames=3,IRanges(start=167967729,end=168539123))
+#  } else{
+#    g.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$gene.start,end=sub#$gene.end))
+ # }
+#  eval <- g.gr %over% expand.gr
+#  if(eval==TRUE){
+#    print(findOverlaps(expand.gr,g.gr))
+#  }
+#  return(eval)
+#}) %>% as.logical(.) 
 
-novel.genes[oneMb.vec]
+#novel.genes[oneMb.vec]
 
+filter(gws.df,gene_name %in% novel.genes)$gene_name %>% table(.) %>% 
+  sort(.) %>% rev(.)
+
+filter(gws.df,gene_name %in% novel.genes)$tissue %>% table(.) %>% 
+  sort(.) %>% rev(.)
+
+filter(gws.df,gene_name %in% novel.genes,tissue=="TissueXcan (GTEx)")$gene_name
+filter(gws.df,gene_name %in% novel.genes,tissue=="Islets")$gene_name
+filter(gws.df,gene_name %in% novel.genes,tissue=="Pancreas")$gene_name
+filter(gws.df,gene_name %in% novel.genes,tissue=="Liver")$gene_name
+filter(gws.df,gene_name %in% novel.genes,tissue=="Muscle-Skeletal")$gene_name
+filter(gws.df,gene_name %in% novel.genes,tissue=="Adipose-Subcutaneous")$gene_name
 
 ```
 
