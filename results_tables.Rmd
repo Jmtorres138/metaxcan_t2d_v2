@@ -373,7 +373,7 @@ plot_table <- function(table.df,outname,start,stop,rep=FALSE,lws=FALSE){
 
 scott.df <- fread(dat.dir %&% "Scott_T2D_gws-significant.full.txt")
 scott.islet <- fread(dat.dir %&% "Scott_T2D_gws-significant_Islet.txt")
-scott.islet$gene_name[13] <- "EGFEM1P"; scott.islet$gene.start[13] <- 167967729 ; scott.islet$gene.end[13] <- 168539123;
+scott.islet$gene_name[15] <- "EGFEM1P"; scott.islet$gene.start[15] <- 167967729 ; scott.islet$gene.end[15] <- 168539123;
 scott.islet$chrom[13] <- 3
 names(scott.islet)[names(scott.islet)=="scott.z"] <- "z"
 names(scott.islet)[names(scott.islet)=="scott.p"] <- "p"
