@@ -16,94 +16,185 @@ knitr::opts_chunk$set(echo = TRUE)
 library("data.table")
 library("tidyverse")
 
-server.dir <- "/home/jason/science/servers/FUSE5/" 
-server.dir <- "/Users/jtorres/FUSE5/"
+fuse.path <- "/home/jason/science/servers/"
+#fuse.path <- "/Users/jtorres/"
+server.dir <- fuse.path %&% "FUSE5/" 
 work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
 dat.dir <- work.dir %&% "data_frames/"
 
 ```
 
 
+```{r}
+
+assoc.df <- fread(dat.dir %&% "association_results.txt")
+islet.df <- fread(dat.dir %&% "islet_association.txt")
+
+gws.df <- fread(dat.dir %&% "result-table_ScottT2D_gws.txt")
+lws.df <- fread(dat.dir %&% "result-table_ScottT2D_lws.txt")
+
+```
+
+
+
 # Tissue-wide association analyses - Genome-wide significance 
 
 ## Significant associations and genes 
 
-
-T2D: Scott (no BMI adjustment)
+### Individual GTEx tissues (adipose, muscle, liver, pancreas)
 
 ```{r}
 
-scott.sig.df <- fread(dat.dir %&% "Scott_T2D_gws-significant.full.txt")
+# Number of test performed in each tissue 
+assoc.df$adi.scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # adipose: 7243
+assoc.df$liv.scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # liver: 2502
+assoc.df$mus.scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # muscle: 6509
+assoc.df$panc.scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # pancreas: 4603
+assoc.df$multi.scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # TissueXcan: 17433
+islet.df$scott.z %>% as.numeric(.) %>% na.omit(.) %>% length(.) # Islets: 4322
 
-scott.sig.islet <- fread(dat.dir %&% "Scott_T2D_gws-significant_Islet.txt")
-# ENSG00000206120.7 has NA for gene, manually looking up, it a pseudogene, EGFEM1P chr3, 167967729,168539123, index is 13 in data frame
-scott.sig.islet$gene_name[13] <- "EGFEM1P"; scott.sig.islet$gene.start[13] <- 167967729 ; scott.sig.islet$gene.end[13] <- 168539123;
-scott.sig.islet$chrom[13] <- "chr3"
+# Total number of significant associations across all GTEx tissues of interest (adipose, muscle, liver, pancreas) 
 
-table(scott.sig.df$tissue)
-isl.genes <- scott.sig.islet$gene_name
-adi.genes <- filter(scott.sig.df,tissue=="Adipose-subcutaneous")$gene_name
-mus.genes <- filter(scott.sig.df,tissue=="Muscle-skeletal")$gene_name
-liv.genes <- filter(scott.sig.df,tissue=="Liver")$gene_name
-panc.genes <- filter(scott.sig.df,tissue=="Pancreas")$gene_name
-tx.genes <- filter(scott.sig.df,tissue=="cross-tissue")$gene_name
+(filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets"))) %>% dim(.))[1] # 28
 
-adi.genes %in% tx.genes %>% sum(.)
-mus.genes %in% tx.genes %>% sum(.)
-liv.genes %in% tx.genes %>% sum(.)
-panc.genes %in% tx.genes %>% sum(.)
-isl.genes %in% tx.genes %>% sum(.)
+# Number of associatiosn per tissue 
 
-tx.genes[tx.genes %in% isl.genes[!(isl.genes %in% panc.genes)]]
-# "IGF2BP2" "PLEKHA1" "TH"      "ADCY5"   "DGKB" 
+(filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")))$tissue %>% table(.)) # 45 
 
-scott.gtex.genes <- scott.sig.df$gene_name %>% unique(.)
-scott.islet.genes <- scott.sig.islet$gene_name %>% unique(.) 
-scott.gtex.genes %>% length(.)
-scott.islet.genes %>% length(.)
-scott.gtex.genes[scott.gtex.genes %in% scott.islet.genes]
+# Number of unique genes 
 
-c(scott.gtex.genes,scott.islet.genes) %>% unique(.) %>% length(.)
+filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")))$gene_name %>% unique(.) %>% length(.) # 22
 
-# Replicated genes 
+gene.tab <- filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")))$gene_name %>% table(.) %>% sort(.) %>% rev(.) 
+# Genes that show up in multiple tissues 
+count <- sum(gene.tab>1)
+filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")),gene_name%in%names(gene.tab[1:count])) # looking up tissues 
 
-filter(scott.sig.df)$gene_name %>% unique(.) %>% length(.)
-filter(scott.sig.df,total.replicated==TRUE)$gene_name %>% unique(.) %>% length(.)
-#"JAZF1"   "WFS1"    "PLEKHA1" "SOX4"    "ZZEF1"   "ATP5G1"  "CYP26C1" "NRAP"    "IRS1"    "ZDHHC6"  "THADA"  
-#[12] "TCF7L2"  "IGF2BP2" "ID4"     "NHLRC2"  "GPAM"    "DGKB"
-17/41
+# Number of genes that have been previously reported 
 
-filter(scott.sig.islet)$gene_name %>% unique(.) %>% length(.)
-filter(scott.sig.islet,replicated==TRUE)$gene_name %>% unique(.) %>% length(.)
-12/17
+filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")),gene.type=="reported")$gene_name %>% unique(.) %>% length(.)
+filter(gws.df,!(tissue%in%c("TissueXcan (GTEx)","Islets")),gene.type=="reported")$gene_name %>% unique(.)
 
 ```
 
 
-### BMI-adjusted 
+### TissueXcan to leverage information content across 44 GTEx tissues 
 
 ```{r}
 
-scottadj.sig.df <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant.full.txt")
-scottadj.sig.islet <- fread(dat.dir %&% "Scott_T2D_BMIadj_gws-significant_Islet.txt")
-scottadj.gtex.genes <- scottadj.sig.df$gene_name %>% unique(.)
-scottadj.islet.genes <- scottadj.sig.islet$gene_name %>% unique(.)
-scottadj.gtex.genes %>% length(.)
-scottadj.islet.genes %>% length(.)
-c(scottadj.gtex.genes,scottadj.islet.genes) %>% unique(.) %>% length(.)
-scott.gtex.genes[!(scott.gtex.genes %in% scottadj.gtex.genes)]
-```
+# Number of sig associations 
+(filter(gws.df,tissue == "TissueXcan (GTEx)") %>% dim(.))[1] # 29 
 
+txn.genes <- filter(gws.df,tissue == "TissueXcan (GTEx)")$gene_name
 
-## Profile genes for known status 
+# Number of genes shared with those implicated above in single-tissue analysis 
+(names(gene.tab) %in% txn.genes) %>% sum(.)
+names(gene.tab)[(names(gene.tab) %in% txn.genes)] # 10 
 
+# Number of genes NOT shared with those implicated above in single-tissue analysis 
+txn.genes[!(txn.genes %in% names(gene.tab))] %>% length(.) # 19 
 
-```{r}
+txn.uniq <- txn.genes[!(txn.genes %in% names(gene.tab))]
 
-
+# Number of these unique genes that have been previously reported in GRASP/NHGRI-EBI catalogue 
+filter(gws.df,tissue=="TissueXcan (GTEx)",gene_name%in%txn.uniq)$gene.type %>% table(.)
+#novel.locus    reported  t2d.region 
+#         10           6           3 
+filter(gws.df,tissue=="TissueXcan (GTEx)",gene_name%in%txn.uniq,gene.type=="reported")$gene_name
 
 ```
 
 
 
+### Bringing in Islet eQTLs for comparisons 
+
+```{r}
+
+# Islet is argueably most important tissue, did TWAS with islet eQTL models
+
+# total number of significant associations/genes in islet analysis 
+isl.genes <- filter(gws.df,tissue=="Islets")$gene_name
+isl.genes %>% length(.) # 17 genes 
+
+
+# number shared between Pancreas GWS genes 
+panc.genes <- filter(gws.df,tissue=="Pancreas")$gene_name
+isl.genes[isl.genes %in% panc.genes] %>% length(.)
+shared.panc <- isl.genes[isl.genes %in% panc.genes]  
+filter(gws.df,gene_name%in%shared.panc,tissue=="Islets")$gene.type
+
+# number shared between TissueXcan GWS genes 
+txn.genes <- filter(gws.df,tissue=="TissueXcan (GTEx)")$gene_name
+isl.genes[isl.genes %in% txn.genes] %>% length(.)
+shared.txn <- isl.genes[isl.genes %in% txn.genes]  
+filter(gws.df,gene_name%in%shared.txn,tissue=="Islets")$gene.type
+
+```
+
+
+
+
+
+Conclusion 
+
+```{r}
+
+total.unique <- gws.df$gene_name %>% unique(.) %>% length(.)
+
+filter(gws.df,tissue!="TissueXcan (GTEx)",!(gene_name%in%txn.genes))$gene_name %>% unique(.) %>% length(.)
+
+sub.df <- filter(gws.df,tissue!="TissueXcan (GTEx)",!(gene_name%in%txn.genes)) %>% 
+  dplyr::select(.,one_of("gene_name","gene.type"))
+sub.df <- sub.df[!duplicated(sub.df$gene_name),]
+sub.df$gene.type %>% table(.)
+#novel.locus    reported  t2d.region 
+ #        12           7           3 
+```
+
+
+### Profile all GWS genes implicated for novel discoveries 
+
+```{r}
+
+library("GenomicRanges")
+
+region.df <- fread(dat.dir %&% "gwas_windows.txt")
+len.vec <- region.df$loc.end - region.df$loc.start
+len.vec %>%  sort(.)
+len.vec %>% summary(.)
+
+gws.df$gene_name %>% unique(.) %>% length(.)
+sig.genes <-gws.df$gene_name %>% unique(.)  
+
+# Breakdown of genes 
+sub.df <- filter(gws.df,gene_name %in% sig.genes) %>% dplyr::select(.,one_of("gene_name","gene.type"))
+sub.df <- sub.df[!duplicated(sub.df$gene_name),]
+sub.df$gene.type %>% table(.)
+
+# Evaluation of Novel genes 
+
+novel.genes <- filter(sub.df,gene.type=="novel.locus")$gene_name
+
+# how many of these novel genes are within 1Mb of gwas associations 
+
+reg.gr <- GRanges(seqnames=region.df$chrom,IRanges(start=region.df$loc.start,end=region.df$loc.end))
+expand.gr <- reg.gr + 500000
+oneMb.vec <- map(novel.genes,function(g){
+  sub <- filter(assoc.df,gene_name==g)
+  if (g == "EGFEM1P"){
+    g.gr <- GRanges(seqnames=3,IRanges(start=167967729,end=168539123))
+  } else{
+    g.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$gene.start,end=sub$gene.end))
+  }
+  eval <- g.gr %over% expand.gr
+  if(eval==TRUE){
+    print(findOverlaps(expand.gr,g.gr))
+  }
+  return(eval)
+}) %>% as.logical(.) 
+
+novel.genes[oneMb.vec]
+
+
+```
 
