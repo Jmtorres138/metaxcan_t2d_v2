@@ -4,28 +4,25 @@
 library("data.table")
 library("dplyr")
 library("purrr")
-source("https://bioconductor.org/biocLite.R")
-biocLite("SNPlocs.Hsapiens.dbSNP144.GRCh37")
-library("SNPlocs.Hsapiens.dbSNP144.GRCh37")
-
-local.dir <- "/Users/jtorres/Google Drive/Science/Projects/metaxcan_t2d_v2/"
-serv.dir <- "/group/im-lab/nas40t2/jason/projects/metaxcan_t2d_v2/"
-gwas.dir <- serv.dir %&% "t2d/runs/gwas_conversion/results/gwas/"
-gwas.file <- gwas.dir %&% "DIAGRAM_T2D_SCOTT.ma"
-write.dir <- serv.dir %&% "data_frames/"
+library("GenomicRanges")
 
 
-gwas.df <- fread(gwas.file)
+fuse.dir <- "/home/jason/science/servers/"
+rescomp.dir <- fuse.dir %&% "FUSE5/projects/metaxcan_t2d_v2/"
+data.dir <- rescomp.dir %&% "data_frames/"
+gwas.file <- data.dir %&% "Scott_T2D_DIAGRAM-full.txt.gz"
+
+
+gwas.df <- fread("cat " %&% gwas.file %&% " | zmore")
 
 thresh <- 5 * 10^(-8)
 
-sig.df <- filter(gwas.df,p<=thresh)
-rsids <- sig.df$SNP
-snps.gr <- rsidsToGRanges(rsids, caching=TRUE)
+sig.df <- filter(gwas.df,P<=thresh)
 
-win.gr <- snps.gr
-start(win.gr) <- start(win.gr) - 500000
-end(win.gr) <- end(win.gr) + 500000
+win.gr <- GRanges(seqnames=sig.df$CHR,IRanges(start=sig.df$POS,end=sig.df$POS))
+
+start(win.gr) <- start(win.gr) - 1e6 
+end(win.gr) <- end(win.gr) + 1e6 
 
 reduce.gr <- IRanges::reduce(win.gr)
 
@@ -35,4 +32,4 @@ locus.df <- data.frame(chrom=seqnames(reduce.gr),
 
 locus.df$chrom <- gsub("ch","",locus.df$chrom) %>% as.integer(.)
 locus.df$locus.id <- 1:dim(locus.df)[1]
-write.table(locus.df,write.dir%&%"gwas_windows.txt",quote=FALSE,sep="\t",row.names=F)
+write.table(locus.df,data.dir%&%"gwas_windows.txt",quote=FALSE,sep="\t",row.names=F)
