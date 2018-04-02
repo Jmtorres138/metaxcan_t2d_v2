@@ -1,0 +1,158 @@
+---
+title: "GO-enrich.Rmd"
+author: "Jason Torres"
+date: "4/2/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup
+
+```{r}
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+library("Homo.sapiens")
+#source("http://bioconductor.org/biocLite.R")
+#biocLite("topGO")
+library("topGO")
+library("GO.db")
+
+#fuse.path <- "/home/jason/science/servers/"
+fuse.path <- "/Users/jtorres/"
+server.dir <- fuse.path %&% "FUSE5/" 
+work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
+dat.dir <- work.dir %&% "data_frames/"
+
+gws.df <- fread(dat.dir %&% "result-table_ScottT2D_gws.txt")
+lws.df <- fread(dat.dir %&% "result-table_ScottT2D_lws.txt")
+
+```
+
+
+# GO Functions 
+
+```{r}
+
+ensid_strip <- function(vec){
+  map(vec,function(s){
+    strsplit(s,split=".",fixed=TRUE)[[1]][1]
+  }) %>% as.character(.)
+}
+go_enrich <- function(gene.vec,ont="BP",pval.thresh=0.01){
+  # gene.vec is vector of ensid ids for significant genes or set of interest
+  ensgenes <- unique(keys(Homo.sapiens,keytype="ENSEMBL"))
+  geneList <- as.factor(as.integer(ensgenes %in% gene.vec))
+  names(geneList) <- ensgenes
+  # Build topGOdata object
+  GOdata <- new("topGOdata", ontology = ont,
+                allGenes = geneList,annotationFun = annFUN.org,
+                mapping="org.Hs.eg.db",ID="ensembl")
+  result.fisher <- runTest(GOdata,algorithm="classic",statistic="fisher")
+  pval.fisher <- sort(score(result.fisher))
+  pval.adjust <- p.adjust(pval.fisher,method="BH")
+  sig.fisher <- pval.fisher[pval.fisher < pval.thresh]
+  out.df <- data.frame("ontology"=rep(ont,length(sig.fisher)),
+                       "GO"=names(sig.fisher),
+                       "pval"=sig.fisher,
+                       "pval.adj"=pval.adjust[1:length(sig.fisher)],
+                       stringsAsFactors = FALSE)
+  term.df <- select(Homo.sapiens,keys=out.df$GO,
+                    column=c("TERM","DEFINITION"),keytype = "GO")
+  out.df <- cbind(out.df,term.df)
+  return(out.df)
+}
+
+```
+
+
+# Write Output 
+
+GWS 
+
+```{r}
+
+gws.all <- go_enrich(ensid_strip(gws.df$gene%>%unique(.)))
+gws.nov <- go_enrich(ensid_strip(filter(gws.df,gene.type!="reported")$gene%>%unique(.)))
+
+write.table(x=gws.all,file=dat.dir%&%"go-enrich_gws-all.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)
+write.table(x=gws.nov,file=dat.dir%&%"go-enrich_gws-NotReported.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)
+```
+
+LWS 
+
+```{r}
+
+lws.all <- go_enrich(ensid_strip(lws.df$gene%>%unique(.)))
+lws.nov <- go_enrich(ensid_strip(filter(lws.df,gene.type!="reported")$gene%>%unique(.)))
+
+write.table(x=lws.all,file=dat.dir%&%"go-enrich_lws-all.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)
+write.table(x=lws.nov,file=dat.dir%&%"go-enrich_lws-NotReported.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)
+
+```
+
+
+# Flag novel genes of interest
+
+
+```{r}
+
+go_annot <- function(query.vec,go.vec){
+  out.df <- c()
+  ensgenes <- unique(keys(Homo.sapiens,keytype="ENSEMBL"))
+  pb <- txtProgressBar(min=0,max=length(query.vec),style=3)
+  for(i in 1:length(query.vec)){
+    setTxtProgressBar(pb,i)
+    ensid <- query.vec[i]
+    if (ensid %in% ensgenes){
+      sub <- suppressMessages(suppressWarnings(select(Homo.sapiens,keys=ensid,
+                    column=c("ENSEMBL","SYMBOL","GO","TERM"),
+                    keytype = "ENSEMBL") %>% filter(.,ONTOLOGY=="BP",GO%in%go.vec)))  
+    } else{
+      sub <- data.frame()
+    }
+    if(dim(sub)[1]>0){
+      out.df <- rbind(out.df,sub)
+    }
+  }
+  return(out.df)
+}
+
+```
+
+
+GWS 
+
+```{r}
+
+gws.gos <- filter(gws.all[,c(1,2,3,4,7)],pval.adj<=0.05)$GO
+nov.vec <- filter(gws.df,gene.type!="reported")$gene %>% ensid_strip(.)
+
+gws.nov.annot.df <- go_annot(nov.vec,gws.gos)
+write.table(x=gws.nov.annot.df,file=dat.dir%&%"go-annot_gws-NotReported.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)  
+
+```
+
+
+LWS (That overlap GOs for GWS genes)
+
+```{r}
+
+gws.gos <- filter(gws.all[,c(1,2,3,4,7)],pval.adj<=0.05)$GO
+nov.vec <- filter(lws.df,gene.type!="reported")$gene %>% ensid_strip(.)
+
+lws.nov.annot.df <- go_annot(nov.vec,gws.gos)
+write.table(x=lws.nov.annot.df,file=dat.dir%&%"go-annot_lws-NotReported.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)  
+
+```
+
