@@ -16,8 +16,8 @@ knitr::opts_chunk$set(echo = TRUE)
 library("data.table")
 library("tidyverse")
 
-fuse.path <- "/home/jason/science/servers/"
-#fuse.path <- "/Users/jtorres/"
+#fuse.path <- "/home/jason/science/servers/"
+fuse.path <- "/Users/jtorres/"
 server.dir <- fuse.path %&% "FUSE5/" 
 work.dir <- server.dir %&% "projects/metaxcan_t2d_v2/"
 dat.dir <- work.dir %&% "data_frames/"
@@ -175,26 +175,6 @@ sub.df$gene.type %>% table(.)
 
 novel.genes <- filter(sub.df,gene.type=="novel.locus")$gene_name
 
-# how many of these novel genes are within 1Mb of gwas associations 
-
-#reg.gr <- GRanges(seqnames=region.df$chrom,IRanges(start=region.df$loc.start,end=region.df$loc.end))
-#expand.gr <- reg.gr + 1e6
-#oneMb.vec <- map(novel.genes,function(g){
-#  sub <- filter(assoc.df,gene_name==g)
-#  if (g == "EGFEM1P"){
-#    g.gr <- GRanges(seqnames=3,IRanges(start=167967729,end=168539123))
-#  } else{
-#    g.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$gene.start,end=sub#$gene.end))
- # }
-#  eval <- g.gr %over% expand.gr
-#  if(eval==TRUE){
-#    print(findOverlaps(expand.gr,g.gr))
-#  }
-#  return(eval)
-#}) %>% as.logical(.) 
-
-#novel.genes[oneMb.vec]
-
 filter(gws.df,gene_name %in% novel.genes)$gene_name %>% table(.) %>% 
   sort(.) %>% rev(.)
 
@@ -207,6 +187,311 @@ filter(gws.df,gene_name %in% novel.genes,tissue=="Pancreas")$gene_name
 filter(gws.df,gene_name %in% novel.genes,tissue=="Liver")$gene_name
 filter(gws.df,gene_name %in% novel.genes,tissue=="Muscle-Skeletal")$gene_name
 filter(gws.df,gene_name %in% novel.genes,tissue=="Adipose-Subcutaneous")$gene_name
+
+```
+
+
+
+# Locus-wide association analysis - Bonferroni-significance 
+
+
+### Gene set summary 
+
+```{r}
+
+# Evaluation of T2D regions 
+
+str(region.df)
+len.vec <- region.df$loc.end - region.df$loc.start
+len.vec %>% summary(.)
+
+gene.df <- rbind(dplyr::select(assoc.df, one_of("gene","gene_name","chrom","gene.start","gene.end")),
+                dplyr::select(islet.df, one_of("gene","gene_name","chrom","gene.start","gene.end")))
+gene.df <- gene.df[!duplicated(gene.df$gene),] 
+
+# Total number of tested genes (in at least one tissue)
+gene.df %>% dim(.) # 18483
+
+gen.vec <- map(1:dim(region.df)[1],function(i){
+  row.df <- region.df[i,]
+  sub.df <- filter(gene.df,chrom==row.df$chrom,gene.start <= 
+                     row.df$loc.end,gene.end >= row.df$loc.start)
+  dim(sub.df)[1]
+}) %>% as.numeric(.)
+
+# number of genes within these regions
+
+gen.vec %>% summary(.) %>% ceiling(.)
+
+# number of significant associations 
+
+lws.df$gene %>% unique(.) %>% length(.) # 127 
+
+count.vec <- lws.df$gene %>% table(.) %>% as.integer(.) %>% sort(.) %>% rev(.)
+
+count.vec[count.vec > 1] %>% length(.) # 37 
+count.vec[count.vec == 1] %>% length(.) # 90 
+
+# Table of associations counts across analyses 
+
+lws.df$tissue %>% table(.) %>% sort(.) %>% rev(.) %>% View(.)
+
+# Breakdown of genes 
+
+sub.df <- dplyr::select(lws.df,one_of("gene_name","gene.type"))
+sub.df <- sub.df[!duplicated(sub.df$gene_name),]
+sub.df$gene.type %>% table(.)
+filter(sub.df,gene.type=="reported")$gene_name
+
+# Combine both considerations 
+
+sub.df <- dplyr::select(lws.df,one_of("gene_name","gene.type","tissue"))
+filter(sub.df,gene.type=="reported")$tissue %>% table(.) %>% sort(.) %>% rev(.)
+filter(sub.df,gene.type!="reported")$tissue %>% table(.) %>% sort(.) %>% rev(.)
+
+# Mann-Whitney test 
+
+rep.counts <- filter(sub.df,gene.type=="reported")$gene_name %>% table(.) %>% sort(.) %>% rev(.) 
+reg.counts <- filter(sub.df,gene.type!="reported")$gene_name %>% table(.) %>% sort(.) %>% rev(.) 
+median(rep.counts)
+median(reg.counts)
+
+wilcox.test(rep.counts,reg.counts)
+
+# Evaluate Colocalisation 
+
+
+h4 <- map(1:dim(sub.df)[1],function(i){
+  row.df <- sub.df[i,]
+  sub <- filter(assoc.df,gene_name==row.df$gene_name)
+  if (row.df$tissue != "Islets" & row.df$tissue != "TissueXcan (GTEx)"){
+    ifelse(row.df$tissue=="Muscle-Skeletal",sub$mus.scott.h4,
+           ifelse(row.df$tissue=="Adipose-Subcutaneous",sub$adi.scott.h4,
+                  ifelse(row.df$tissue=="Pancreas",sub$panc.scott.h4,sub$liv.scott.h4)))
+  } else{
+    NA
+  }
+}) %>% as.numeric(.) 
+sub.df$h4 <- h4
+rep.h4 <- filter(sub.df,gene.type=="reported")$h4 %>% na.omit(.)
+reg.h4 <- filter(sub.df,gene.type!="reported")$h4 %>% na.omit(.)
+median(rep.h4) # 0.824042
+median(reg.h4) # 0.04401596
+reg.h4[reg.h4>median(rep.h4)]
+
+wilcox.test(rep.h4,reg.h4) # p-value = 7.739e-06
+filter(sub.df,gene.type!="reported") %>% arrange(.,h4)
+
+```
+
+
+### BMI-adjustment 
+
+```{r}
+
+tot <- filter(lws.df)$gene_name %>% unique(.) %>% length(.) # 127
+robust.genes <- filter(lws.df,adj.sig==TRUE)$gene_name %>% unique(.)
+filter(lws.df,adj.sig==FALSE,!(gene_name %in% robust.genes))$gene_name %>%
+  unique(.) %>% length(.) # g0
+delta.genes <- filter(lws.df,adj.sig==FALSE,!(gene_name %in% robust.genes))$gene_name %>%
+  unique(.)
+# Below using functions from GO-enrich.Rmd script 
+#delta.genes <- filter(lws.df,gene_name%in%delta.genes)$gene %>% ensid_strip(.)
+#delta.df <- go_enrich(delta.genes) # Nothing that interesting, no sig enrichment 
+
+```
+
+
+
+### GO check 
+
+GWS 
+
+```{r}
+
+go.gws.all <- fread(dat.dir %&% "go-enrich_gws-all.txt")[,c(1,2,3,4,7)]
+go.gws.nov <- fread(dat.dir %&% "go-enrich_gws-NotReported.txt")[,c(1,2,3,4,7)]
+
+filter(go.gws.all,pval.adj<=0.05) %>% dim(.) # 16 pathways 
+filter(go.gws.all,pval.adj<=0.05)$TERM
+
+filter(go.gws.nov,pval.adj<=0.05) %>% dim(.) # 0 pathways 
+
+filter(go.gws.nov,pval<=0.001) %>% dim(.) # 0 pathways 
+filter(go.gws.nov,pval<=0.001)$TERM
+
+```
+
+LWS 
+
+```{r}
+
+go.lws.all <- fread(dat.dir %&% "go-enrich_lws-all.txt")[,c(1,2,3,4,7)]
+go.lws.nov <- fread(dat.dir %&% "go-enrich_lws-NotReported.txt")[,c(1,2,3,4,7)]
+
+filter(go.lws.all,pval.adj<=0.05) %>% dim(.) # 0 pathways 
+filter(go.lws.all,pval.adj<=0.05)$TERM
+
+filter(go.lws.all,pval<=0.001) %>% dim(.) # 12 pathways 
+filter(go.lws.all,pval<=0.001)$TERM
+
+filter(go.lws.nov,pval<=0.001) %>% dim(.) 
+
+```
+
+
+### GO Flagging 
+
+```{r}
+
+lws.nov.annot.df <- fread(dat.dir%&%"go-annot_lws-NotReported.txt")  
+lws.nov.annot.df$SYMBOL
+lws.nov.annot.df$TERM
+
+```
+
+
+### Region Profiling 
+
+```{r}
+
+loc.df <- region.df
+loc.df$gene.num <- gen.vec
+loc.df$sig.total <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id)$gene_name %>% unique(.) %>% length(.)
+}) %>% as.integer(.)
+loc.df$sig.reported <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id,gene.type=="reported")$gene_name %>% unique(.) %>% length(.)
+}) %>% as.integer(.)
+loc.df$sig.NotReported <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id,gene.type!="reported")$gene_name %>% unique(.) %>% length(.)
+}) %>% as.integer(.)
+loc.df$sig.total.txn <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id,tissue=="TissueXcan (GTEx)")$gene_name %>% unique(.) %>% length(.)
+}) %>% as.integer(.)
+loc.df$sig.reported.txn <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id,gene.type=="reported",tissue=="TissueXcan (GTEx)")$gene_name %>%
+    unique(.) %>% length(.)
+}) %>% as.integer(.)
+loc.df$sig.NotReported.txn <- map(loc.df$locus.id,function(id){
+  filter(lws.df,locus==id,gene.type!="reported",tissue=="TissueXcan (GTEx)")$gene_name %>%
+    unique(.) %>% length(.)
+}) %>% as.integer(.)
+
+loc.df %>% View(.)
+
+(loc.df$sig.total > 0) %>% sum(.) # 37
+filter(loc.df,sig.reported>0) %>% dim(.) # 22 regions 
+filter(loc.df,sig.reported>0)$locus.id
+
+filter(loc.df,sig.reported==0,sig.total>0) %>% dim(.) # 15 regions 
+filter(loc.df,sig.reported==0,sig.total>0)$locus.id
+
+
+```
+
+
+Optional: relationship between number of sig genes and max -log(p) 
+
+
+```{r}
+
+gwas.df <- fread(dat.dir %&% "DIAGRAM_T2D_SCOTT.ma")
+names(gwas.df)[1] <- "RSID"
+snps.df <- fread("cat " %&% dat.dir %&% "snp_keyfile.txt.gz" %&%  " | zmore")
+gwas.full.df <- inner_join(gwas.df,snps.df,by="RSID")
+
+pb <- txtProgressBar(min=0,max=dim(loc.df)[1],style=3)
+maxnlp <- map(1:(dim(loc.df)[1]),function(i){
+  setTxtProgressBar(pb,i)
+  row.df <- loc.df[i,]
+  sub.df <- filter(gwas.full.df,CHR==("chr"%&%row.df$chrom),
+                   POS>=row.df$loc.start,POS<=row.df$loc.end)
+  sub.df$p %>% min(.) %>% -log10(.)
+}) %>% as.numeric(.)
+
+loc.df$maxnlp <- maxnlp
+
+write.table(loc.df,file=dat.dir%&%"gwas-regions-full.txt",
+            sep="\t",quote=FALSE,row.names=FALSE)
+
+plot(loc.df$maxnlp,loc.df$sig.total)
+cor.test(loc.df$maxnlp,loc.df$sig.total) # 0.238314 p-value = 0.1386
+lm(sig.total~maxnlp,data=loc.df) %>% summary(.)
+lm(sig.total~maxnlp+gene.num,data=loc.df) %>% summary(.)
+lm(sig.total~gene.num + maxnlp,data=loc.df) %>% summary(.)
+
+
+```
+
+
+# GERA Replication 
+
+
+### Breakdown 
+
+GWS 
+
+```{r}
+
+gws.df$total.replicated %>% na.omit(.) %>% sum(.) # 33 
+dim(gws.df)[1] # 74
+
+filter(gws.df,total.replicated==TRUE)$gene_name %>% unique(.) %>% length(.) # 26
+filter(gws.df)$gene_name %>% unique(.) %>% length(.) # 51
+filter(gws.df,total.replicated==TRUE)$gene_name %>% unique(.)
+
+filter(gws.df,total.replicated==TRUE,gene.type=="reported")$gene_name %>% unique(.)
+filter(gws.df,total.replicated==TRUE,gene.type=="t2d.region")$gene_name %>% unique(.)
+filter(gws.df,total.replicated==TRUE,gene.type=="novel.locus")$gene_name %>% unique(.)
+
+```
+
+
+LWS 
+
+```{r}
+
+lws.df$total.replicated %>% na.omit(.) %>% sum(.) # 46
+dim(lws.df)[1] # 181
+
+filter(lws.df,total.replicated==TRUE)$gene_name %>% unique(.) %>% length(.) # 31
+filter(lws.df)$gene_name %>% unique(.) %>% length(.) # 127
+filter(lws.df,total.replicated==TRUE)$gene_name %>% unique(.)
+
+filter(lws.df,total.replicated==TRUE,gene.type=="reported")$gene_name %>% unique(.)
+filter(lws.df,total.replicated==TRUE,gene.type=="t2d.region")$gene_name %>% unique(.)
+
+```
+
+
+### Glycemic traits
+
+GWS 
+
+```{r}
+
+fg.rep.genes <- filter(gws.df,total.replicated==TRUE,fg.sig==TRUE)$gene_name
+filter(gws.df,gene_name %in% fg.rep.genes,fg.sig==TRUE)
+
+```
+
+
+LWS
+
+```{r}
+
+fg.rep.genes <- filter(lws.df,total.replicated==TRUE,fg.sig==TRUE)$gene_name
+filter(lws.df,gene_name %in% fg.rep.genes,fg.sig==TRUE) %>% 
+  dplyr::select(.,one_of("gene_name","tissue","z","fg.z","gene.type"))
+
+fi.rep.genes <- filter(lws.df,total.replicated==TRUE,fi.sig==TRUE)$gene_name
+filter(lws.df,gene_name %in% fi.rep.genes,fi.sig==TRUE) %>% 
+  dplyr::select(.,one_of("gene_name","tissue","z","fi.z","gene.type"))
+
+fi.rep.genes <- filter(lws.df,fi.sig==TRUE)$gene_name
+filter(lws.df,gene_name %in% fi.rep.genes,fi.sig==TRUE) %>% 
+  dplyr::select(.,one_of("gene_name","tissue","z","fi.z","gene.type"))
 
 ```
 
