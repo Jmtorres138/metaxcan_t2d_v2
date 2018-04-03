@@ -26,6 +26,8 @@ ref.dir <- rescomp.dir %&% "reference_files/"
 
 library("data.table")
 assoc.df <- fread(df.dir %&% "association_results.txt")
+islet.df <- fread(df.dir %&% "islet_association.txt")
+
 lws.scott.df <- fread(df.dir %&% "Scott_T2D_lws-significant.full.txt")
 loc.prof.df <- fread(df.dir %&% "locus-profile.txt")
 sigloc.df <- fread(df.dir %&% "significant-loci.txt")
@@ -55,30 +57,6 @@ gtf.df <- as.data.frame(gtf.gr,stringsAsFactors=FALSE)
 
 
 
-Development code 
-
-
-```{r}
-
-loc.id <- 10
-l.df <- filter(loc.prof.df,locus.id==loc.id)
-chromo <- l.df$chrom %>% unique(.)
-loc.start <- l.df$loc.start %>% unique(.)
-loc.end <- l.df$loc.end %>% unique(.)
-sub.df <- filter(assoc.df,chrom==chromo,gene.end >= loc.start, gene.start<=loc.end)
-sub.df$reported_gene <- (sub.df$gene_name %in% known.genes)
-
-  #g <- genesymbol[seqnames(genesymbol) == paste0('chr',chromo)]
-  #gr <- GRanges(
-  #      seqnames = Rle(c(paste0("chr",chromo)), c(1)),
-  #      ranges = IRanges(loc.start, end = loc.end))
-  #o<-as.matrix(findOverlaps(g,gr))
-  #g<-g[o[,1],]
-  #t<-autoplot(Homo.sapiens, which = g)
-
-```
-
-
 
 ```{r}
 
@@ -99,7 +77,7 @@ gene_annot_plot <- function(chromo,loc.start,loc.end,sub.df){
                        panel.grid.major = element_blank(),
                        axis.text.y=element_blank(),
                        axis.ticks.y=element_blank()) + ylab("") + 
-    geom_text(aes(x=start,y=y,label=gene_name),fontface="italic",size=3,nudge_y=0.5,
+    geom_text(aes(x=start,y=y,label=gene_name),fontface="italic",size=1.8,nudge_y=0.5,
               color=g.df$color)
   return(plt)
 }
@@ -132,102 +110,171 @@ gwas_loc_plot <- function(chromo,loc.start,loc.end){
 
 library("viridis")
 library("ggrepel")
-#library("Homo.sapiens")
-#library("TxDb.Hsapiens.UCSC.hg19.knownGene")
-#data(genesymbol, package = "biovizBase")
 library("gridExtra")
-#txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+library("rlist")
 
-loc_plot <- function(sub.df,tiss.abrev){
-    root <- tiss.abrev %&% ".scott"
-    vec <- sub.df[,which(names(sub.df)==(root%&%".p"))]
-    col.vec <- ifelse((sub.df[,which(names(sub.df)==(root%&%".z"))] %>% sign(.))>0,
-                      viridis(2)[2],viridis(2)[1])
-    bonfer <- 0.05/(vec %>% na.omit(.) %>% length(.))
-    sub.df$mid.point <- (sub.df$gene.end+sub.df$gene.start)/2
-    sig.df <- filter(sub.df,eval(parse(text=root%&%".p"))<=bonfer)
+loc_plot <- function(input.df,tiss.abrev,top){
+  vec <- input.df$p
+  col.vec <- ifelse((input.df$z %>% 
+                       sign(.))>0,viridis(2)[2],viridis(2)[1])
+  bonfer <- 0.05/(vec %>% na.omit(.) %>% length(.))
+  input.df$mid.point <- (input.df$gene.end+input.df$gene.start)/2
+  input.df$nlp <- -log(input.df$p,base=10)
+  sig.df <- filter(input.df,p<=bonfer)
+  plt <- ggplot(data=input.df,aes(x=mid.point,y=nlp)) + 
+  geom_point(size=1.5,shape=21,fill=col.vec) + 
+  scale_shape_manual(values=c(21,23)) + 
+  geom_hline(yintercept=-log(bonfer,base=10),
+            color="black",size=0.3,linetype=2) + 
+  theme_bw() + theme(legend.position = "none",
+                    panel.grid.major = element_blank(),
+                   panel.grid.minor = element_blank(),
+                     axis.title.y=element_text(size=5),
+                      axis.text.y=element_text(size=3)) + 
+  xlab("position") + 
+  ylab(expression(paste("-log"[10],"(p)"))) 
+
+  if (dim(sig.df)[1]>0){
+    sig.cols <- ifelse(sig.df$gene_name%in%known.genes,"grey99","grey88")
+    plt <- plt + geom_label_repel(data=sig.df,aes(x=mid.point,
+    y=-log(p,base=10),
+    label=gene_name),fontface="italic",
+    label.padding=0.1,size=1.5,fill=sig.cols) 
+  }
     
-    
-    plt <- ggplot(data=sub.df,aes(x=mid.point,
-                                  y=-log(eval(parse(text = root%&%".p")),base=10))) + 
-    geom_point(size=3,fill=col.vec,aes(shape=reported_gene)) + 
-    scale_shape_manual(values=c(21,23)) + 
-    geom_hline(yintercept=-log(bonfer,base=10),
-               color="black",size=0.3,linetype=2) + 
-    scale_y_continuous(breaks=seq(0,top,by=5),limits=c(0,top)) + 
-    theme_bw() + theme(legend.position = "none",
-                       panel.grid.major = element_blank(),
-                       panel.grid.minor = element_blank(),
-                       axis.title.y=element_text(size=10)) + 
-    xlab("position") + 
-    ylab(expression(paste("-log"[10],"(p)"))) # ylab("-log10(p)")
-    
-    if (dim(sig.df)[1]>0){ 
-      sig.cols <- ifelse(sig.df$gene_name%in%known.genes,"ghostwhite","grey")
-      plt <- plt + geom_label_repel(data=sig.df,aes(x=mid.point,
-        y=-log(eval(parse(text = root%&%".p")),base=10),
-        label=gene_name),fontface="italic",size=2.5,fill=sig.cols) 
-    }
-  return(plt)
+  if (top>25){
+    plt <- plt + scale_y_continuous(breaks=seq(0,top,by=10),
+                                    limits=c(0,top))    
+  } else if(top>10&top<25){
+    plt <- plt + scale_y_continuous(breaks=seq(0,top,by=5),
+                                    limits=c(0,top))
+  } else{
+    plt <- plt + scale_y_continuous(breaks=seq(0,top,by=2),
+                                    limits=c(0,top))    
+  }
+
+  titl<-ifelse(tiss.abrev=="multi","TissueXcan (GTEx)",
+               ifelse(tiss.abrev=="panc","Pancreas",
+                      ifelse(tiss.abrev=="liv","Liver",
+                             ifelse(tiss.abrev=="adi",
+                                    "Adipose-Subcutaneous",
+                                    ifelse(tiss.abrev=="isl",
+                                           "Islets",
+                                           "Muscle-Skeletal")))))
+  xpoint <- min(input.df$gene.start)+((max(input.df$gene.end)-min(input.df$gene.start))/8)
+  ypoint <- top * 9.8/10 
+  plt <- plt + annotate("text",x=xpoint,y=ypoint,
+                        label=titl,size=2.5)
+  evalu <- dim(sig.df)[1] > 0
+  return(list(evalu,plt))
 }
 
-locus_track_plot <- function(loc.id,loctype){
+locus_track_plot <- function(loc.id){
   l.df <- filter(loc.prof.df,locus.id==loc.id)
   chromo <- l.df$chrom %>% unique(.)
   loc.start <- l.df$loc.start %>% unique(.)
   loc.end <- l.df$loc.end %>% unique(.)
   sub.df <- filter(assoc.df,chrom==chromo,gene.end >= loc.start, gene.start<=loc.end)
+  isl.df <- filter(islet.df,chrom==chromo,gene.end>=loc.start,
+                   gene.start<=loc.end)
   sub.df$reported_gene <- (sub.df$gene_name %in% known.genes)
+  isl.df$reported_gene <- (isl.df$gene_name %in% known.genes)
+
   top <- min(c(min(na.omit(sub.df$multi.scott.p)),
                min(na.omit(sub.df$panc.scott.p)),
-      min(na.omit(sub.df$liv.scott.p)),min(na.omit(sub.df$mus.scott.p)),
-      min(na.omit(sub.df$adi.scott.p)))) %>% -log(.,base=10) %>% ceiling(.)
-  
+      min(na.omit(sub.df$liv.scott.p)),
+      min(na.omit(sub.df$mus.scott.p)),
+      min(na.omit(sub.df$adi.scott.p)),
+      min(na.omit(isl.df$scott.p)))) %>% -log(.,base=10) %>% ceiling(.)
+  top <- (top + (top*0.10)) %>% ceiling(.) 
   plt.gwas <- gwas_loc_plot(chromo,loc.start,loc.end)
-  plt.multi <- loc_plot(sub.df,"multi")
-  #plt.panc <- loc_plot(sub.df,"panc")
-  #plt.liv <- loc_plot(sub.df,"liv")
-  #plt.mus <- loc_plot(sub.df,"mus")
-  #plt.adi <- loc_plot(sub.df,"adi")
+  # Multi 
+  in.df <- dplyr::select(sub.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "multi.scott.p","multi.scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.multi <- loc_plot(in.df,"multi",top)
+  # Pancreas 
+  in.df <- dplyr::select(sub.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "panc.scott.p","panc.scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.panc <- loc_plot(in.df,"panc",top)
+  # Liver 
+  in.df <- dplyr::select(sub.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "liv.scott.p","liv.scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.liv <- loc_plot(in.df,"liv",top)
+  # Muscle 
+  in.df <- dplyr::select(sub.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "mus.scott.p","mus.scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.mus <- loc_plot(in.df,"mus",top)
+  # Adipose 
+  in.df <- dplyr::select(sub.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "adi.scott.p","adi.scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.adi <- loc_plot(in.df,"adi",top)
+  # Islet 
+  in.df <- dplyr::select(isl.df,
+                         one_of("gene","gene_name","chrom","gene.start",
+                                "gene.end","reported_gene",
+                                "scott.p","scott.z"))
+  names(in.df) <- c("gene","gene_name","chrom","gene.start",
+                    "gene.end","reported_gene","p","z")
+  plt.isl <- loc_plot(in.df,"isl",top)
   detach("package:ggbio", unload=TRUE)
   gene.plt <- gene_annot_plot(chromo,loc.start,loc.end,sub.df)
   library("ggbio")
 
-  plt <- tracks(`TissueXcan`=plt.multi,
-                `GWAS`=plt.gwas,
-         #`Pancreas`=plt.panc,
-         #`Liver`=plt.liv,
-         #`Muscle`=plt.mus,
-         #`Adipose`=plt.adi,
-         `Genes`=gene.plt,
-         heights = c(1,1,1),
-         main="Locus: "%&%loc.id%&%"    Type: "%&%loctype) + 
+  name.vec <- c("plt.multi","plt.isl","plt.panc","plt.mus","plt.adi","plt.liv")
+  eval.vec <- c(plt.multi[[1]], plt.isl[[1]],plt.panc[[1]], plt.mus[[1]],
+                plt.adi[[1]],plt.liv[[1]])
+  keep.plots <- name.vec[eval.vec]
+  
+  p.list <- map(keep.plots,function(p){
+    eval(parse(text=p%&%"[[2]]"))
+  })
+  h <- 1/length(p.list)
+  height.vec <- c(rep(h,length(p.list)),1.5*h,h)
+  plt <- tracks(list.append(p.list,plt.gwas,gene.plt),
+                heights=height.vec,main="Region: "%&%loc.id) + 
     scale_x_sequnit("Mb") + 
-    theme(axis.text.x=element_text(size=7)) + 
-    theme(axis.text.y=element_text(size=7))
+    theme(axis.text.x=element_text(size=5),
+          axis.text.y=element_text(size=5),
+          axis.title.y=element_text(size=8))  
+
   ggsave(plot=plt,
-         filename=plot.dir%&%"loc-TissueXcan_"%&%loctype%&%"_"%&%loc.id%&%".pdf",
-         width=5,height=4)
+         filename=plot.dir%&%"Region_"%&%loc.id%&%".png",
+         width=5,height=6)
 
 }
 
 
-save_loc_track_plots <- function(){
-  onlyknown.loci <- filter(sigloc.df,locus.type=="only.known")$locus.id %>% unique(.)
-  onlynovel.loci <- filter(sigloc.df,locus.type=="only.novel")$locus.id %>% unique(.)
-  shared.loci <- filter(sigloc.df,locus.type=="shared")$locus.id %>% unique(.)
-  for (loc in onlyknown.loci){
-    print(loc)
-    locus_track_plot(loc,"only-known")
+save_loc_track_plots <- function(remove.vec=c(8,25,28)){
+  loc.ids <- loc.prof.df$locus.id %>% unique(.)
+  loc.ids <- loc.ids[!(loc.ids%in%remove.vec)]
+  pb <- txtProgressBar(min=0,max=length(loc.ids),style=3)
+  for (i in 1:length(loc.ids)){
+    locid <- loc.ids[i]
+    print(locid)
+    setTxtProgressBar(pb,i)
+    locus_track_plot(locid)
   }
-  for (loc in onlynovel.loci){
-    print(loc)
-    locus_track_plot(loc,"only-novel")
-  }
-  for (loc in shared.loci){
-    print(loc)
-    locus_track_plot(loc,"shared")
-  }
+
 }
 
 
@@ -238,87 +285,15 @@ save_loc_track_plots <- function(){
 
 save_loc_track_plots()
 
-#locus_track_plot(loc.id=9,loctype="test")
-# Note: 3 (THADA), 10 (IGF2BP2), 6 (PPARG), 9 (ADCY5)
 ```
 
 
 
 ```{bash}
 
-convert loc-TissueXcan_only-known_*.pdf loc-TissueXcan_only-known.pdf
-convert loc-TissueXcan_only-novel_*.pdf loc-TissueXcan_only-novel.pdf
-convert loc-TissueXcan_shared_*.pdf loc-TissueXcan_shared.pdf
-
-```
-
-## EDA plots (shows all tissues, not just tissueXcan)
-
-
-```{r}
-
-locus_eda_plot <- function(loc.id,loctype){
-  l.df <- filter(loc.prof.df,locus.id==loc.id)
-  chromo <- l.df$chrom %>% unique(.)
-  loc.start <- l.df$loc.start %>% unique(.)
-  loc.end <- l.df$loc.end %>% unique(.)
-  sub.df <- filter(assoc.df,chrom==chromo,gene.end >= loc.start, gene.start<=loc.end)
-  sub.df$reported_gene <- (sub.df$gene_name %in% known.genes)
-  top <- min(c(min(na.omit(sub.df$multi.scott.p)),min(na.omit(sub.df$panc.scott.p)),
-      min(na.omit(sub.df$liv.scott.p)),min(na.omit(sub.df$mus.scott.p)),
-      min(na.omit(sub.df$adi.scott.p)))) %>% -log(.,base=10) %>% ceiling(.)
-  
-  plt.multi <- loc_plot(sub.df,"multi")#,loc.id%&%": TissueXcan")
-  plt.panc <- loc_plot(sub.df,"panc")#,loc.id%&%": Pancreas")
-  plt.liv <- loc_plot(sub.df,"liv")#,loc.id%&%": Liver")
-  plt.mus <- loc_plot(sub.df,"mus")#,loc.id%&%": Muscle-skeletal")
-  plt.adi <- loc_plot(sub.df,"adi")#,loc.id%&%": Adipose-subcutaneous")  
-  g.plt <- gene_annot_plot(chromo,loc.start,loc.end,sub.df)
-  plt <- grid.arrange(plt.panc,plt.liv,plt.mus,plt.adi,plt.multi,g.plt,ncol=1,
-                     name=loc.id)
-  ggsave(plot=plt,filename=plot.dir%&%"loc-EDA_"%&%loctype%&%"_"%&%loc.id%&%".pdf",
-         width=5,height=6)
-}
-
-save_loc_eda_plots <- function(){
-  onlyknown.loci <- filter(sigloc.df,locus.type=="only.known")$locus.id %>% unique(.)
-  onlynovel.loci <- filter(sigloc.df,locus.type=="only.novel")$locus.id %>% unique(.)
-  shared.loci <- filter(sigloc.df,locus.type=="shared")$locus.id %>% unique(.)
-  for (loc in onlyknown.loci){
-    print(loc)
-    locus_eda_plot(loc,"only-known")
-  }
-  for (loc in onlynovel.loci){
-    print(loc)
-    locus_eda_plot(loc,"only-novel")
-  }
-  for (loc in shared.loci){
-    print(loc)
-    locus_eda_plot(loc,"shared")
-  }
-
-}
-
-```
-
-
-
-
-```{r}
-
-detach("package:ggbio", unload=TRUE)
-library("ggplot2")
-
-save_loc_eda_plots()
-
-```
-
-
-```{bash}
-
-convert loc-EDA_only-known_*.pdf loc-EDA_only-known.pdf
-convert loc-EDA_only-novel_*.pdf loc-EDA_only-novel.pdf
-convert loc-EDA_shared_*.pdf loc-EDA_shared.pdf
+#convert loc-TissueXcan_only-known_*.pdf loc-TissueXcan_only-known.pdf
+#convert loc-TissueXcan_only-novel_*.pdf loc-TissueXcan_only-novel.pdf
+#convert loc-TissueXcan_shared_*.pdf loc-TissueXcan_shared.pdf
 
 ```
 
