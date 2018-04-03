@@ -17,7 +17,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 "%&%" <- function(a,b) paste0(a,b)
 
-rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+fuse.path <- "/home/jason/science/servers/"
+#fuse.path <- "/Users/jtorres/"
+rescomp.dir <- fuse.path %&% "FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 plot.dir <- rescomp.dir %&% "plots/"
 ref.dir <- rescomp.dir %&% "reference_files/"
@@ -176,7 +178,8 @@ locus_track_plot <- function(loc.id,loctype){
   loc.end <- l.df$loc.end %>% unique(.)
   sub.df <- filter(assoc.df,chrom==chromo,gene.end >= loc.start, gene.start<=loc.end)
   sub.df$reported_gene <- (sub.df$gene_name %in% known.genes)
-  top <- min(c(min(na.omit(sub.df$multi.scott.p)),min(na.omit(sub.df$panc.scott.p)),
+  top <- min(c(min(na.omit(sub.df$multi.scott.p)),
+               min(na.omit(sub.df$panc.scott.p)),
       min(na.omit(sub.df$liv.scott.p)),min(na.omit(sub.df$mus.scott.p)),
       min(na.omit(sub.df$adi.scott.p)))) %>% -log(.,base=10) %>% ceiling(.)
   
@@ -265,11 +268,11 @@ locus_eda_plot <- function(loc.id,loctype){
       min(na.omit(sub.df$liv.scott.p)),min(na.omit(sub.df$mus.scott.p)),
       min(na.omit(sub.df$adi.scott.p)))) %>% -log(.,base=10) %>% ceiling(.)
   
-  plt.multi <- loc_plot(sub.df,"multi",loc.id%&%": TissueXcan")
-  plt.panc <- loc_plot(sub.df,"panc",loc.id%&%": Pancreas")
-  plt.liv <- loc_plot(sub.df,"liv",loc.id%&%": Liver")
-  plt.mus <- loc_plot(sub.df,"mus",loc.id%&%": Muscle-skeletal")
-  plt.adi <- loc_plot(sub.df,"adi",loc.id%&%": Adipose-subcutaneous")  
+  plt.multi <- loc_plot(sub.df,"multi")#,loc.id%&%": TissueXcan")
+  plt.panc <- loc_plot(sub.df,"panc")#,loc.id%&%": Pancreas")
+  plt.liv <- loc_plot(sub.df,"liv")#,loc.id%&%": Liver")
+  plt.mus <- loc_plot(sub.df,"mus")#,loc.id%&%": Muscle-skeletal")
+  plt.adi <- loc_plot(sub.df,"adi")#,loc.id%&%": Adipose-subcutaneous")  
   g.plt <- gene_annot_plot(chromo,loc.start,loc.end,sub.df)
   plt <- grid.arrange(plt.panc,plt.liv,plt.mus,plt.adi,plt.multi,g.plt,ncol=1,
                      name=loc.id)
