@@ -1,0 +1,150 @@
+---
+title: "05.1_model-snp-plots.Rmd"
+author: "Jason Torres"
+date: "4/4/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Setup 
+
+```{r}
+
+"%&%" <- function(a,b) paste0(a,b)
+
+library("data.table")
+library("tidyverse")
+
+fuse.path <- "/Users/jtorres/" 
+#fuse.path <- "/home/jason/science/servers/" 
+
+rescomp.dir <- fuse.path %&% "FUSE5/projects/metaxcan_t2d_v2/"
+df.dir <- rescomp.dir %&% "data_frames/"
+plot.dir <- rescomp.dir %&% "plots/"
+
+assoc.df <- fread(df.dir %&% "association_results.txt")
+
+source("chromHMM_plot.R")
+
+```
+
+
+```{r}
+
+#state.df <- save_t2d_tissue_states()
+state.df <- fread(df.dir %&% "chromHMM_t2d-tisues.txt")
+mod.gws.df <- fread("cat " %&% df.dir %&% "archive/model-snps_Scott_T2D_gws-significant.full.txt" %&%  " | zmore")
+mod.lws.df <- fread("cat " %&% df.dir %&% "archive/model-snps_Scott_T2D_lws-significant.full.txt" %&%  " | zmore")
+```
+
+
+```{r}
+
+lookup_ensid <- function(symbol){
+  filter(assoc.df,gene_name==symbol)$gene %>% unique(.)
+}
+
+chromHMM_plot <- function(state.df,chrom,loc.start,loc.end){
+  sub.df <- filter(state.df,CHR==chrom,START<=loc.end,END>=loc.start)
+  sub.df$START <- sub.df$START %>% as.integer(.)
+  sub.df$END <- sub.df$END %>% as.integer(.)
+  sub.df$Y <- ifelse(sub.df$Tissue=="Islets",4,
+                     ifelse(sub.df$Tissue=="Liver",3,
+                            ifelse(sub.df$Tissue=="Muscle",2,
+                                   ifelse(sub.df$Tissue=="Adipose",1,NA))))
+  
+  
+  plt <- ggplot(data=sub.df) + 
+    geom_segment(data=sub.df,aes(x=START,xend=END,y=Y,yend=Y),color=sub.df$COL,size=10) + 
+    coord_cartesian(ylim=c(0,4.5),expand = FALSE) + 
+    theme_clear() + 
+    theme(axis.title = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y=element_blank()) 
+  
+  plt <- ggplot(data=sub.df) + 
+    geom_rect(data=sub.df,aes(xmin=START,xmax=END,ymin=Y,ymax=Y+1),color=sub.df$COL,fill=sub.df$COL) + 
+    #coord_cartesian(ylim=c(-1,5),expand = FALSE) + 
+    theme_clear() + 
+    theme(axis.title = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y=element_blank()) 
+  return(plt)
+}
+
+```
+
+
+# Model snp plot 
+
+
+```{r}
+
+library("viridis")
+library("ggbio")
+library("ggrepel")
+
+mod_snp_plot <- function(mod.df,ensid,tiss,xpoint,ypoint){
+  sub.df <- filter(mod.df,GENE==ensid,Tissue==tiss) %>% 
+    arrange(.,desc(weight^2))
+  signcols <- ifelse((sub.df$weight %>% sign(.))>0,
+                     viridis(2)[2],viridis(2)[1])
+  plt <- ggplot(data=sub.df,aes(x=POS,y=weight^2)) + 
+    geom_point(shape=21,color="black",fill=signcols,size=2) + 
+    theme_bw() + 
+    ylab(expression(beta^2)) + 
+    annotate("text",x=xpoint,y=ypoint,label=gsub("_","-",tiss)) + 
+    geom_label_repel(data=sub.df[1:5,],
+                     aes(x=POS,y=weight^2,label=RSID),
+                     size=2,label.padding=0.15)
+  return(plt)
+}
+
+
+track_plot_allsig <- function(mod.df,ensid){
+  gene <- filter(assoc.df,gene==ensid)$gene_name %>% unique(.)
+  sub.df <- filter(mod.df,GENE==ensid)
+  xpoint <- min(sub.df$POS) + ((max(sub.df$POS)-min(sub.df$POS))*0.20)
+  ypoint <- max(sub.df$weight^2) + (max(sub.df$weight^2)*0.20)
+  xlow <- sub.df$POS %>% min(.) 
+  xhigh <- sub.df$POS %>% max(.)
+  tiss.vec <- sub.df$Tissue %>% unique(.)
+  p.list <- list()
+  for (i in 1:length(tiss.vec)){
+    tiss <- tiss.vec[i]
+    plt <- mod_snp_plot(mod.df,ensid,tiss,xpoint,ypoint)
+    p.list[[i]] <- plt
+  }
+  chrom.plt <- chromHMM_plot(state.df,chrom=unique(sub.df$CHR),
+                             min(sub.df$POS),max(sub.df$POS))
+  p.list[[length(tiss.vec)+1]] <- chrom.plt
+  h <- 1/length(tiss.vec)
+  h.vec <- c(rep(h,length(tiss.vec)),2*h)
+  tracks(p.list,heights=h.vec,
+         main=gene,xlim=c(xlow,xhigh)) + 
+    scale_x_sequnit("Mb") + 
+    theme(axis.text.x=element_text(size=7),
+          axis.text.y=element_text(size=7),
+          axis.title.y=element_text(size=8),
+          plot.title=element_text(face="bold")) 
+}
+
+```
+
+
+# Trials 
+
+```{r}
+
+
+
+track_plot_allsig(mod.gws.df,lookup_ensid("WFS1"))
+
+track_plot_allsig(mod.gws.df,lookup_ensid("TCF7L2"))
+
+```
+
+
