@@ -36,8 +36,8 @@ source("chromHMM_plot.R")
 
 #state.df <- save_t2d_tissue_states()
 state.df <- fread(df.dir %&% "chromHMM_t2d-tisues.txt")
-mod.gws.df <- fread("cat " %&% df.dir %&% "archive/model-snps_Scott_T2D_gws-significant.full.txt" %&%  " | zmore")
-mod.lws.df <- fread("cat " %&% df.dir %&% "archive/model-snps_Scott_T2D_lws-significant.full.txt" %&%  " | zmore")
+mod.gws.df <- fread("cat " %&% df.dir %&% "model-snps_Scott_T2D_gws-significant.full.txt" %&%  " | zmore")
+mod.lws.df <- fread("cat " %&% df.dir %&% "model-snps_Scott_T2D_lws-significant.full.txt" %&%  " | zmore")
 ```
 
 
