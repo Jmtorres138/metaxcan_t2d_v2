@@ -56,8 +56,17 @@ chromHMM_plot <- function(state.df,chrom,loc.start,loc.end){
   
   
   plt <- ggplot(data=sub.df) + 
-    geom_segment(data=sub.df,aes(x=START,xend=END,y=Y,yend=Y),color=sub.df$COL,size=20) + 
-    coord_cartesian(ylim=c(0.5,4.5),expand = FALSE) + theme_clear() + 
+    geom_segment(data=sub.df,aes(x=START,xend=END,y=Y,yend=Y),color=sub.df$COL,size=10) + 
+    coord_cartesian(ylim=c(0,4.5),expand = FALSE) + 
+    theme_clear() + 
+    theme(axis.title = element_blank(),
+          axis.text.y = element_blank(),
+          axis.ticks.y=element_blank()) 
+  
+  plt <- ggplot(data=sub.df) + 
+    geom_rect(data=sub.df,aes(xmin=START,xmax=END,ymin=Y,ymax=Y+1),color=sub.df$COL,fill=sub.df$COL) + 
+    #coord_cartesian(ylim=c(-1,5),expand = FALSE) + 
+    theme_clear() + 
     theme(axis.title = element_blank(),
           axis.text.y = element_blank(),
           axis.ticks.y=element_blank()) 
