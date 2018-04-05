@@ -15,13 +15,20 @@ knitr::opts_chunk$set(echo = TRUE)
 
 "%&%" <- function(a,b) paste0(a,b)
 
-rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+#fuse.path <- "/Users/jtorres/"
+fuse.path <- "/home/jason/science/servers/"
+rescomp.dir <- fuse.path %&% "FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 plot.dir <- rescomp.dir %&% "plots/"
-enh.df <- fread(df.dir %&% "varshney2016-strong-enhancers-s9.txt")
+plot.loc.dir <- "/home/jason/science/projects/metaxcan_t2d_v2/plots/"
+states.df <- fread(df.dir %&% "chromHMM_t2d-tissues_grouped.txt")
 
-#model-snps_Scott_T2D_lws-significant.full.txt
-#model-snps_Scott_T2D_gws-significant.full.txt
+
+mod.lws.df <- fread(df.dir %&% "model-snps_Scott_T2D_lws-significant.full.txt")
+mod.gws.df <- fread(df.dir %&% "model-snps_Scott_T2D_gws-significant.full.txt")
+
+lws.df <- fread(df.dir %&% "result-table_ScottT2D_lws.txt")
+gws.df <- fread(df.dir %&% "result-table_ScottT2D_gws.txt")
 
 ```
 
@@ -30,41 +37,146 @@ enh.df <- fread(df.dir %&% "varshney2016-strong-enhancers-s9.txt")
 
 library("GenomicRanges")
 
-build_profile_df <- function(sig="gws"){
-  mod.df <- fread(df.dir %&% "model-snps_Scott_T2D_"%&%sig%&%"-significant.full.txt")
-  res.df <- fread(df.dir %&% "Scott_T2D_"%&%sig%&%"-significant.full.txt")
-  tiss.vec <- unique(enh.df$tissue)
-  pb <- txtProgressBar(min=0,max=1,style=3)
-  for (i in 1:dim(res.df)[1]){
-    setTxtProgressBar(pb,i)
-    row.df <- res.df[i,]
-    ensid <- row.df$gene; gene <- row.df$gene_name
-    bt <- row.df$best.tissue; t <- row.df$tissue
-    tissue <- ifelse(is.na(bt),t,bt)
-    tissue <- ifelse(tissue=="Adipose-subcutaneous","Adipose_Subcutaneous",tissue)
-    tissue <- ifelse(tissue=="Muscle-skeletal","Muscle_Skeletal",tissue)
-    w.df <- filter(mod.df,GENE==ensid,Tissue==tissue)
-    w.gr <- GRanges(seqnames=w.df$CHR,IRanges(start=w.df$POS,end=w.df$POS))
-    ssw <- (w.df$weight^2) %>% sum(.)
-    vec <- c() 
-    for (tiss in tiss.vec){
-      sub <- filter(enh.df,tissue==tiss)
-      sub.gr <- GRanges(seqnames=sub$chrom,IRanges(start=sub$start,end=sub$end))
-      inter <- w.gr %over% sub.gr
-      inter.df <- w.df[inter,]
-      inter.ssw <- (inter.df$weight^2) %>% sum(.)
-      ratio <- inter.ssw/ssw
-      vec <- append(vec,ratio)
+
+
+chrom_divvy <- function(snps.df,tiss){
+  sub.df <- filter(states.df,Tissue==tiss)
+  state.gr <- GRanges(seqnames=sub.df$CHR,
+                      IRanges(sub.df$START,sub.df$END))
+  names(state.gr) <- sub.df$Group
+  prom.gr <- state.gr[names(state.gr)=="promoter"]
+  enh.gr <- state.gr[names(state.gr)=="enhancer"]
+  transc.gr <- state.gr[names(state.gr)=="transcription"]
+  repr.gr <- state.gr[names(state.gr)=="repressed"]  
+  
+  snp.gr <- GRanges(seqnames=snps.df$CHR,
+                    IRanges(snps.df$POS,snps.df$POS))
+  names(snp.gr) <- snps.df$RSID
+  prom.snps <- names(snp.gr)[snp.gr %over% prom.gr]
+  enh.snps <- names(snp.gr)[snp.gr %over% enh.gr]
+  transc.snps <- names(snp.gr)[snp.gr %over% transc.gr]
+  repr.snps <- names(snp.gr)[snp.gr %over% repr.gr]
+  tot <- snps.df$wsq %>% sum(.)
+  prom.wsq <- (filter(snps.df,RSID%in%prom.snps)$wsq %>% sum(.)) / tot
+  enh.wsq <- (filter(snps.df,RSID%in%enh.snps)$wsq %>% sum(.))/ tot
+  transc.wsq <- (filter(snps.df,RSID%in%transc.snps)$wsq %>% sum(.))/ tot
+  repr.wsq <- (filter(snps.df,RSID%in%repr.snps)$wsq %>% sum(.))/ tot
+  out.df <- data.frame(prom.wsq,enh.wsq,transc.wsq,repr.wsq)
+  names(out.df) <- c(tiss%&%".prom",tiss%&%".enh",tiss%&%".transc",tiss%&%".repr")
+  return(out.df)
+}
+
+build_chrom_divvy <- function(snps.df){
+  tiss.vec <- c("Islets","Adipose","Liver","Muscle")
+  out.df <- data.frame()
+  for (t in tiss.vec){
+    build.df <- chrom_divvy(snps.df,t)
+    if(dim(out.df)[1]==0){
+      out.df <- build.df
+    } else{
+      out.df <- cbind(out.df,build.df)      
     }
-    
   }
+  return(out.df)
+}
+
+
+build_profile_tissueXcan <- function(res.df,mod.df){
+  sub.df <- filter(res.df,tissue=="TissueXcan (GTEx)")
+  pb <- txtProgressBar(min=0,max=dim(sub.df)[1],style=3)
+  out.df <- c()
+  for (i in 1:dim(sub.df)[1]){
+    setTxtProgressBar(pb,i)
+    row.df <- sub.df[i,]
+    ensid <- row.df$gene
+    gene <- row.df$gene_name
+    tiss <- gsub("-","_",row.df$best.tissue)
+    snps.df <- filter(mod.df,Tissue==tiss,GENE==ensid)
+    snps.df$wsq <- snps.df$weight^2
+    snps.df <- arrange(snps.df,desc(wsq))
+    build.df <- build_chrom_divvy(snps.df)
+    id <- row.df$gene_name%&%" : "%&% row.df$best.tissue
+    build.df <- cbind(id,build.df)
+    out.df <- rbind(out.df,build.df)
+  }
+  out.df$id <- out.df$id %>% as.character(.)
+  return(out.df)
 }
 
 ```
 
 
+```{r}
+
+state.gws.df <- build_profile_tissueXcan(gws.df,mod.gws.df)
+state.lws.df <- build_profile_tissueXcan(lws.df,mod.lws.df)
+
+```
 
 
+# Heatmap 
 
 
+```{r}
+
+#library(RColorBrewer)
+#coul = colorRampPalette(brewer.pal(8, "PiYG"))(25)
+library("viridis")
+coul = colorRampPalette(inferno(8))(100)
+
+chromheat <- function(score.df,stateterm,plotname){
+  sub.df <- dplyr::select(score.df,-one_of("id")) %>% 
+    dplyr::select(.,contains(stateterm)) 
+  names(sub.df) <-  c("Islets","Adipose","Liver","Muscle")
+  mat <- sub.df %>% as.matrix(.)
+  row.names(mat) <- score.df$id
+  mat <- apply(mat, 2, rev)
+  
+  heatmap(mat,Colv = NA, Rowv = NA, main=plotname,col=c("grey88",rev(coul)),scale="none",
+          cexCol=1.2)  
+}
+
+chromheat_all_gws <- function(){
+  score.df <- state.gws.df
+  pdf(plot.dir %&% "chromHMM-heatmap_gws_prom.pdf",height=6,width=9)
+  chromheat(score.df,"prom","Promoter")  
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_gws_enh.pdf",height=6,width=9)
+  chromheat(score.df,"enh","Enhancer")
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_gws_transc.pdf",height=6,width=9)
+  chromheat(score.df,"transc","Transcription")
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_gws_repr.pdf",height=6,width=9)
+  chromheat(score.df,"repr","Repressed")
+  dev.off()
+  
+}
+
+
+chromheat_all_lws <- function(){
+  score.df <- state.lws.df
+  pdf(plot.dir %&% "chromHMM-heatmap_lws_prom.pdf",height=12,width=15)
+  chromheat(score.df,"prom","Promoter")  
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_lws_enh.pdf",height=12,width=15)
+  chromheat(score.df,"enh","Enhancer")
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_lws_transc.pdf",height=12,width=15)
+  chromheat(score.df,"transc","Transcription")
+  dev.off()
+  pdf(plot.dir %&% "chromHMM-heatmap_lws_repr.pdf",height=12,width=15)
+  chromheat(score.df,"repr","Repressed")
+  dev.off()
+  
+}
+
+```
+
+
+```{r}
+
+chromheat_all_gws()
+chromheat_all_lws()
+```
 

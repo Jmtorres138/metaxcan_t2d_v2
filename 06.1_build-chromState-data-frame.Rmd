@@ -1,5 +1,5 @@
 ---
-title: "04.2_build-enhancer-data-frame.Rmd"
+title: "06.1"
 author: "Jason Torres"
 date: "2/13/2018"
 output: html_document
@@ -13,41 +13,51 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 
+library("data.table")
+library("tidyverse")
+
 "%&%" <- function(a,b) paste0(a,b)
 
-rescomp.dir <- "/Users/jtorres/FUSE5/projects/metaxcan_t2d_v2/"
+#fuse.path <- "/Users/jtorres/"
+fuse.path <- "/home/jason/science/servers/"
+rescomp.dir <- fuse.path %&% "FUSE5/projects/metaxcan_t2d_v2/"
 df.dir <- rescomp.dir %&% "data_frames/"
 plot.dir <- rescomp.dir %&% "plots/"
 ref.dir <- rescomp.dir %&% "reference_files/"
-states.dir <- "/Users/jtorres/FUSE/reference/chromatin_segmentation/" %&% 
-  "varshney_2016/chromatin_states/"
+states.df <- fread(df.dir %&% "chromHMM_t2d-tisues.txt")
 
 ```
 
 
 ```{r}
 
-write_chromseg_file <- function(){
-  files <- list.files(states.dir)
-  files <- files[grepl(".chromatinStates.bed.gz",files)]
-  out.df <- c() 
-  pb <- txtProgressBar(min=0,max=length(files),style=3)
-  for (i in 1:length(files)){
-    setTxtProgressBar(pb,i)
-    f <- files[i]
-    print(f)
-    tiss <- strsplit(f,split=".chromatinStates.bed.gz")[[1]][1]
-    sub.df <- fread("cat " %&% states.dir%&%f %&% " | zmore",sep="\t")
-    sub.df <- filter(sub.df,V4=="9_Active_enhancer_1") %>%
-      dplyr::select(.,one_of("V1","V2","V3"))
-    sub.df$V2 <- sub.df$V2 + 1; sub.df$V3 <- sub.df$V3 + 1
-    names(sub.df) <- c("chrom","start","end")
-    sub.df$tissue <- tiss
-    out.df <- rbind(out.df,sub.df)
-  }
-  write.table(x=out.df,file=df.dir%&%"varshney2016-strong-enhancers-s9.txt",
+states.df$STATE %>% unique(.)
+
+promoters <- c("1_Active_TSS","2_Weak_TSS","3_Flanking_TSS","14_Bivalent/poised_TSS")
+enhancers <- c("9_Active_enhancer_1","8_Genic_enhancer","11_Weak_enhancer",
+               "10_Active_enhancer_2")
+transcribed <- c("5_Strong_transcription","6_Weak_transcription")
+repressed <- c("17_Weak_repressed_polycomb","16_Repressed_polycomb")
+
+pb <- txtProgressBar(min=0,max=dim(states.df)[1],style=3)
+states.df$Group <- map(1:dim(states.df)[1],function(i){
+  setTxtProgressBar(pb,i)
+  state <- states.df$STATE[i]
+  ifelse(state%in%promoters,"promoter",
+         ifelse(state%in%enhancers,"enhancer",
+                ifelse(state%in%transcribed,"transcription",
+                       ifelse(state%in%repressed,"repressed","low signal"))))
+}) %>% as.character(.)
+
+
+```
+
+
+```{r}
+
+
+write.table(x=states.df,file=df.dir%&%"chromHMM_t2d-tissues_grouped.txt",
               sep="\t",quote=FALSE,row.names=FALSE)  
-}
 
 
 ```
